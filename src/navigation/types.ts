@@ -1,3 +1,35 @@
-// Add new routes here so everyone shares the same names.
-export type RootStackParamList = { Tabs: undefined; Gallery: undefined };
-export type TabParamList = { Home: undefined; Search: undefined; AddItem: undefined; Chat: undefined; Profile: undefined };
+export type RootStackParamList = {
+  Landing: undefined;
+  Login: undefined;
+  Register: undefined;
+
+  SignUpMessage: undefined;
+
+  VerifyEmail:
+    | {
+        email?: string;
+      }
+    | undefined;
+
+  EmailVerified: undefined;
+
+  ForgotPassword: undefined;
+  PasswordResetSent: undefined;
+
+  Terms: undefined;
+  Privacy: undefined;
+
+  AccountSuspended: undefined;
+
+  Tabs: undefined;
+
+  Gallery: undefined;
+};
+
+export type TabParamList = {
+  Home: undefined;
+  Search: undefined;
+  AddItem: undefined;
+  Chat: undefined;
+  Profile: undefined;
+};
