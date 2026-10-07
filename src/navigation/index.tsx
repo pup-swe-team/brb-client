@@ -50,6 +50,7 @@ import SearchScreen from '../features/listings/screens/SearchScreen';
 ========================================================= */
 
 import ProfileScreen from '../features/profile/screens/ProfileScreen';
+import VerifyIdentityScreen from '../features/profile/screens/VerifyIdentityScreen';
 
 /* =========================================================
    SHARED
@@ -356,6 +357,11 @@ export function RootNavigator() {
         <Stack.Screen
           name="Tabs"
           component={MainTabs}
+        />
+
+      <Stack.Screen
+        name="VerifyIdentity"
+        component={VerifyIdentityScreen}
         />
 
         {/* =================================================
