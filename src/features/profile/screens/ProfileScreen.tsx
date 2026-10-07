@@ -10,6 +10,10 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { colors, radius, spacing } from '../../../theme';
 import { ScreenContainer } from '../../../shared/components';
+import {
+  VerificationStatus,
+  useVerificationGate,
+} from '../../../shared/hooks/useVerificationGate';
 
 type ItemStatus =
   | 'Requested'
@@ -158,10 +162,18 @@ function BorrowedItemCard({
   );
 }
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation }: any) {
   const [role, setRole] = useState<'Borrower' | 'Lender'>(
     'Borrower',
   );
+
+  // TODO: replace with user.verificationStatus once it comes from auth/user data.
+  const [verificationStatus] = useState<VerificationStatus>('Unverified');
+  const { guard, gateModal } = useVerificationGate(verificationStatus);
+  const isVerified = verificationStatus === 'Verified';
+  const needsVerification =
+    verificationStatus === 'Unverified' ||
+    verificationStatus === 'Rejected';
 
   const requestedItems = items.filter(
     (item) => item.status === 'Requested',
@@ -211,17 +223,38 @@ export default function ProfileScreen() {
               </Text>
 
               <View style={styles.verifiedRow}>
-                <View style={styles.verifiedBadge}>
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={11}
-                    color={colors.white}
-                  />
+                {isVerified ? (
+                  <View style={styles.verifiedBadge}>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={11}
+                      color={colors.white}
+                    />
 
-                  <Text style={styles.verifiedText}>
-                    Verified
-                  </Text>
-                </View>
+                    <Text style={styles.verifiedText}>
+                      Verified
+                    </Text>
+                  </View>
+                ) : (
+                  <View
+                    style={[
+                      styles.verifiedBadge,
+                      { backgroundColor: colors.textMuted },
+                    ]}
+                  >
+                    <Ionicons
+                      name="alert-circle"
+                      size={11}
+                      color={colors.white}
+                    />
+
+                    <Text style={styles.verifiedText}>
+                      {verificationStatus === 'Pending'
+                        ? 'Under review'
+                        : 'Not verified'}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               <Text style={styles.affiliation}>
@@ -283,6 +316,42 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
+          {/* VERIFY IDENTITY */}
+          {needsVerification && (
+            <View style={styles.lenderCard}>
+              <View style={styles.lenderIcon}>
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={23}
+                  color={colors.primary}
+                />
+              </View>
+
+              <View style={styles.lenderInfo}>
+                <Text style={styles.lenderTitle}>
+                  {verificationStatus === 'Rejected'
+                    ? 'Verification not approved'
+                    : 'Verify your identity'}
+                </Text>
+
+                <Text style={styles.lenderDescription}>
+                  {verificationStatus === 'Rejected'
+                    ? 'Upload a new ID to try again'
+                    : 'Upload your ID to unlock borrowing and lending'}
+                </Text>
+              </View>
+
+              <Pressable
+                style={styles.applyButton}
+                onPress={() => navigation.navigate('VerifyIdentity')}
+              >
+                <Text style={styles.applyText}>
+                  Verify Now
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
           {/* BECOME A LENDER */}
           {role === 'Borrower' && (
             <View style={styles.lenderCard}>
@@ -305,7 +374,14 @@ export default function ProfileScreen() {
                 </Text>
               </View>
 
-              <Pressable style={styles.applyButton}>
+              <Pressable
+                style={styles.applyButton}
+                onPress={() =>
+                  guard(() => {
+                    // TODO: open the lender application once that flow exists.
+                  })
+                }
+              >
                 <Text style={styles.applyText}>
                   Apply Now
                 </Text>
@@ -438,6 +514,8 @@ export default function ProfileScreen() {
 
           <View style={styles.bottomSpace} />
         </ScrollView>
+
+        {gateModal}
       </View>
     </ScreenContainer>
   );
@@ -452,15 +530,13 @@ const styles = StyleSheet.create({
   },
 
   screen: {
-  flex: 1,
-  width: '110%',
-  backgroundColor: colors.bg,
-  marginLeft: -spacing.lg,
-  marginRight: -spacing.lg,
-  padding: 0,
-},
-
-
+    flex: 1,
+    width: '110%',
+    backgroundColor: colors.bg,
+    marginLeft: -spacing.lg,
+    marginRight: -spacing.lg,
+    padding: 0,
+  },
 
   /* HEADER */
   header: {
@@ -601,7 +677,7 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
 
-  /* LENDER CARD */
+  /* LENDER / VERIFY CARD */
   lenderCard: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
