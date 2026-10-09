@@ -9,7 +9,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors, radius, spacing } from '../../../theme';
-import { ScreenContainer } from '../../../shared/components';
+import { ScreenContainer, AffiliationBadge } from '../../../shared/components';
 import {
   VerificationStatus,
   useVerificationGate,
@@ -223,6 +223,7 @@ export default function ProfileScreen({ navigation }: any) {
               </Text>
 
               <View style={styles.verifiedRow}>
+                <AffiliationBadge affiliation="Student" />
                 {isVerified ? (
                   <View style={styles.verifiedBadge}>
                     <Ionicons
