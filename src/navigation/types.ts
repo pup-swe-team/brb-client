@@ -2,6 +2,7 @@ export type RootStackParamList = {
   Landing: undefined;
   Login: undefined;
   Register: undefined;
+  VerifyIdentity: undefined;
 
   SignUpMessage: undefined;
 
@@ -33,3 +34,8 @@ export type TabParamList = {
   Chat: undefined;
   Profile: undefined;
 };
+export interface PublicUser {
+  id: string;
+  fullName: string;
+  verified: boolean;
+}
