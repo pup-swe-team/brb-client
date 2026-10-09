@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../../theme';
+import { VerifiedLabel } from '../../../shared/components';
 
 export default function ItemDetailScreen({ navigation, route }: any) {
   const item = route?.params?.item ?? {};
@@ -202,14 +203,10 @@ export default function ItemDetailScreen({ navigation, route }: any) {
 
             <View style={styles.lenderInfo}>
               <View style={styles.lenderNameRow}>
-                <Text style={styles.lenderName}>
-                  Neo Ervine Y. Geroda
-                </Text>
-
-                <Ionicons
-                  name="checkmark-circle"
-                  size={16}
-                  color={colors.primary}
+                <VerifiedLabel
+                  name="Neo Ervine Y. Geroda"
+                  affiliation="Student"
+                  verified={true}
                 />
               </View>
 
@@ -386,10 +383,12 @@ function FeedbackCard({
   name,
   rating,
   message,
+  affiliation = 'Student',
 }: {
   name: string;
   rating: number;
   message: string;
+  affiliation?: string;
 }) {
   return (
     <View style={styles.feedbackCard}>
@@ -403,9 +402,11 @@ function FeedbackCard({
 
       <View style={styles.feedbackContent}>
         <View style={styles.feedbackHeader}>
-          <Text style={styles.feedbackName}>
-            {name}
-          </Text>
+          <VerifiedLabel
+            name={name}
+            affiliation={affiliation}
+            compact
+          />
 
           <View style={styles.feedbackStars}>
             {[1, 2, 3, 4, 5].map((star) => (

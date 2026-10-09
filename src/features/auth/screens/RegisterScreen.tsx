@@ -10,7 +10,7 @@ import {
 import { ScreenContainer, Input } from '../../../shared/components';
 import { colors } from '../../../theme';
 
-type Affiliation = 'Student' | 'Alumni' | 'Faculty' | 'Staff';
+type Affiliation = 'Student' | 'Faculty' | 'Staff';
 
 export default function RegisterScreen({ navigation }: any) {
   const [fullName, setFullName] = useState('');
@@ -167,7 +167,7 @@ export default function RegisterScreen({ navigation }: any) {
                   @iskolarngbayan.pup.edu.ph
                 </Text>
                 {' '}
-                (Student/Alumni) or
+                (Student) or
                 {' '}
                 <Text style={styles.emailErrorBold}>
                   @pup.edu.ph
@@ -190,7 +190,6 @@ export default function RegisterScreen({ navigation }: any) {
             {(
               [
                 'Student',
-                'Alumni',
                 'Faculty',
                 'Staff',
               ] as Affiliation[]

@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { colors } from '../../../theme';
+import { VerifiedLabel, AffiliationType } from '../../../shared/components';
 
 
 /* =========================================================
@@ -25,6 +26,8 @@ type Item = {
   id: string;
   title: string;
   lender: string;
+  affiliation?: AffiliationType;
+  verified?: boolean;
   location: string;
   price: string;
   rating: string;
@@ -41,6 +44,8 @@ const items: Item[] = [
     id: '1',
     title: 'Transfer and Business Taxation',
     lender: 'Mark Anthony Cruz',
+    affiliation: 'Student',
+    verified: true,
     location: 'West, 4th Floor, PUP Main',
     price: 'FREE',
     rating: '0.00',
@@ -51,6 +56,8 @@ const items: Item[] = [
     id: '2',
     title: 'Lab Coat (MEDIUM)',
     lender: 'Gwen Tempiosa',
+    affiliation: 'Faculty',
+    verified: true,
     location: 'South, 6th Floor, PUP Main',
     price: 'FREE',
     rating: '4.30',
@@ -61,6 +68,8 @@ const items: Item[] = [
     id: '3',
     title: 'Safety Hat (Orange)',
     lender: 'Ella Napomuceno',
+    affiliation: 'Student',
+    verified: true,
     location: 'PUP OJA, 5th, Main, Manila',
     price: '₱20 day',
     rating: '0.00',
@@ -71,6 +80,8 @@ const items: Item[] = [
     id: '4',
     title: 'Basic Calculator',
     lender: 'Rikki Rodriguez',
+    affiliation: 'Staff',
+    verified: true,
     location: 'West, 4th Floor, PUP Main',
     price: '₱8 day',
     rating: '0.00',
@@ -383,12 +394,14 @@ export default function SearchScreen({
 
                 {/* LENDER */}
 
-                <Text
-                  style={styles.itemLender}
-                  numberOfLines={1}
-                >
-                  {item.lender}
-                </Text>
+                <View style={{ marginBottom: 4 }}>
+                  <VerifiedLabel
+                    name={item.lender}
+                    affiliation={item.affiliation || 'Student'}
+                    verified={item.verified ?? true}
+                    compact
+                  />
+                </View>
 
 
                 {/* LOCATION */}
