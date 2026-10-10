@@ -1,5 +1,6 @@
 import React from 'react';
 import { Text } from 'react-native';
+import * as Linking from 'expo-linking';
 
 import {
   NavigationContainer,
@@ -256,12 +257,27 @@ function MainTabs() {
 }
 
 /* =========================================================
+   DEEP LINKING
+========================================================= */
+
+const linking = {
+  prefixes: [Linking.createURL('/'), 'brb://'],
+
+  config: {
+    screens: {
+      VerifyEmail: 'auth/verify-email',
+    },
+  },
+};
+
+/* =========================================================
    ROOT NAVIGATION
 ========================================================= */
 
 export function RootNavigator() {
   return (
     <NavigationContainer
+      linking={linking}
       theme={{
         ...DefaultTheme,
 

@@ -9,6 +9,8 @@ export type RootStackParamList = {
   VerifyEmail:
     | {
         email?: string;
+        uid?: string;
+        token?: string;
       }
     | undefined;
 
