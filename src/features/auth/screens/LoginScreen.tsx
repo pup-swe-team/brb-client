@@ -12,23 +12,34 @@ import {
 } from '../../../shared/components';
 
 import { colors } from '../../../theme';
+import { extractApiError, login } from '../services/authService';
 
 export default function LoginScreen({
   navigation,
 }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  function handleLogin() {
-    setError(false);
+  async function handleLogin() {
+    setError('');
+    if (loading) return;
 
     if (!email.trim() || !password.trim()) {
-      setError(true);
+      setError('Please enter your email and password.');
       return;
     }
 
-    navigation.navigate('Tabs');
+    setLoading(true);
+    try {
+      await login(email.trim(), password);
+      navigation.navigate('Tabs');
+    } catch (err) {
+      setError(extractApiError(err));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -56,7 +67,7 @@ export default function LoginScreen({
             value={email}
             onChangeText={(value) => {
               setEmail(value);
-              setError(false);
+              setError('');
             }}
             placeholder="Email"
             keyboardType="email-address"
@@ -72,7 +83,7 @@ export default function LoginScreen({
             value={password}
             onChangeText={(value) => {
               setPassword(value);
-              setError(false);
+              setError('');
             }}
             placeholder="Password"
             password
@@ -80,16 +91,15 @@ export default function LoginScreen({
         </View>
 
         {/* ERROR */}
-        {error && (
+        {error ? (
           <View style={styles.errorBox}>
             <Text style={styles.errorIcon}>⚠</Text>
 
             <Text style={styles.errorText}>
-              Incorrect email or password. Please try again. You
-              have 2 attempts left before a 15-minute lock.
+              {error}
             </Text>
           </View>
-        )}
+        ) : null}
 
         {/* FORGOT PASSWORD */}
         <Pressable
@@ -130,7 +140,7 @@ export default function LoginScreen({
         {/* SIGN UP */}
         <View style={styles.signupRow}>
           <Text style={styles.signupText}>
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
           </Text>
 
           <Pressable

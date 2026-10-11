@@ -9,6 +9,7 @@ import {
 
 import { ScreenContainer, Input } from '../../../shared/components';
 import { colors } from '../../../theme';
+import { extractApiError, register } from '../services/authService';
 
 type Affiliation = 'Student' | 'Faculty' | 'Staff';
 
@@ -26,6 +27,7 @@ export default function RegisterScreen({ navigation }: any) {
   const [agreePrivacy, setAgreePrivacy] = useState(false);
 
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const isPupEmail =
     email.toLowerCase().endsWith('@pup.edu.ph') ||
@@ -48,8 +50,9 @@ export default function RegisterScreen({ navigation }: any) {
   const hasSpecialSymbol =
     /[^A-Za-z0-9]/.test(password);
 
-  function handleSignUp() {
+  async function handleSignUp() {
     setError('');
+    if (loading) return;
 
     if (
       !fullName.trim() ||
@@ -99,9 +102,24 @@ export default function RegisterScreen({ navigation }: any) {
       return;
     }
 
-    navigation.navigate('VerifyEmail', {
-      email,
-    });
+    setLoading(true);
+    try {
+      await register({
+        email: email.trim(),
+        password,
+        password_confirm: confirmPassword,
+        full_name: fullName.trim(),
+        contact_number: contactNumber.trim(),
+        affiliation,
+      });
+      navigation.navigate('VerifyEmail', {
+        email,
+      });
+    } catch (err) {
+      setError(extractApiError(err));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
