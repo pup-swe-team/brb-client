@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radius, spacing } from '../../../theme';
 import { ScreenContainer, AffiliationBadge } from '../../../shared/components';
@@ -163,6 +164,7 @@ function BorrowedItemCard({
 }
 
 export default function ProfileScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
   const [role, setRole] = useState<'Borrower' | 'Lender'>(
     'Borrower',
   );
@@ -198,10 +200,17 @@ export default function ProfileScreen({ navigation }: any) {
   );
 
   return (
-    <ScreenContainer>
+    // Full-bleed screen: the header handles the top inset and the tab bar
+    // handles the bottom one, so ScreenContainer adds neither (nor padding).
+    <ScreenContainer edges={[]} padded={false}>
       <View style={styles.screen}>
         {/* HEADER */}
-        <View style={styles.header}>
+        <View
+          style={[
+            styles.header,
+            { paddingTop: insets.top + spacing.md },
+          ]}
+        >
           <Text style={styles.headerTitle}>
             My Profile
           </Text>
@@ -523,29 +532,18 @@ export default function ProfileScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    margin: 0,
-    padding: 0,
-  },
-
   screen: {
     flex: 1,
-    width: '110%',
     backgroundColor: colors.bg,
-    marginLeft: -spacing.lg,
-    marginRight: -spacing.lg,
-    padding: 0,
   },
 
   /* HEADER */
   header: {
     width: '100%',
-    height: 52,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
   },
 
   headerTitle: {
@@ -554,18 +552,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  scroll: {
-    flex: 1,
-    width: '100%',
-    margin: 0,
-    padding: 0,
-  },
-
   scrollContent: {
     width: '100%',
-    margin: 0,
-    padding: 0,
-    paddingBottom: 10,
+    paddingBottom: spacing.lg,
   },
 
   /* PROFILE */
@@ -608,6 +597,9 @@ const styles = StyleSheet.create({
 
   verifiedRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm - 2,
     marginBottom: 3,
   },
 

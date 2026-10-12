@@ -12,31 +12,77 @@ import {
 } from '../../../shared/components';
 
 import { colors } from '../../../theme';
-import { extractApiError, login } from '../services/authService';
+import {
+  UnverifiedEmailError,
+  extractApiError,
+  getApiErrorCode,
+  login,
+} from '../services/authService';
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Backend `detail` text can be generic (e.g. "No active account found..."),
+// so the common failure gets an explicit message.
+function loginErrorMessage(err: unknown): string {
+  if (getApiErrorCode(err) === 'invalid_credentials') {
+    return 'Incorrect email or password. Please try again.';
+  }
+  return extractApiError(err);
+}
 
 export default function LoginScreen({
   navigation,
 }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  async function handleLogin() {
+  function clearErrors() {
+    setEmailError('');
+    setPasswordError('');
     setError('');
+  }
+
+  async function handleLogin() {
+    clearErrors();
     if (loading) return;
 
-    if (!email.trim() || !password.trim()) {
-      setError('Please enter your email and password.');
-      return;
+    const trimmedEmail = email.trim();
+    let invalid = false;
+
+    if (!trimmedEmail) {
+      setEmailError('Please enter your email address.');
+      invalid = true;
+    } else if (!EMAIL_PATTERN.test(trimmedEmail)) {
+      setEmailError('Please enter a valid email address.');
+      invalid = true;
     }
+
+    if (!password) {
+      setPasswordError('Please enter your password.');
+      invalid = true;
+    }
+
+    if (invalid) return;
 
     setLoading(true);
     try {
-      await login(email.trim(), password);
+      await login(trimmedEmail, password);
       navigation.navigate('Tabs');
     } catch (err) {
-      setError(extractApiError(err));
+      // Unverified accounts go back to the verification prompt, not into the app.
+      if (err instanceof UnverifiedEmailError) {
+        navigation.navigate('VerifyEmail', { email: err.email });
+        return;
+      }
+      if (getApiErrorCode(err) === 'unverified_email') {
+        navigation.navigate('VerifyEmail', { email: trimmedEmail });
+        return;
+      }
+      setError(loginErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -64,10 +110,12 @@ export default function LoginScreen({
         <View style={styles.emailSection}>
           <Input
             label="Email"
+            required
             value={email}
+            error={emailError}
             onChangeText={(value) => {
               setEmail(value);
-              setError('');
+              clearErrors();
             }}
             placeholder="Email"
             keyboardType="email-address"
@@ -80,10 +128,12 @@ export default function LoginScreen({
         <View style={styles.passwordSection}>
           <Input
             label="Password"
+            required
             value={password}
+            error={passwordError}
             onChangeText={(value) => {
               setPassword(value);
-              setError('');
+              clearErrors();
             }}
             placeholder="Password"
             password
@@ -116,13 +166,14 @@ export default function LoginScreen({
         {/* LOGIN */}
         <Pressable
           onPress={handleLogin}
+          disabled={loading}
           style={({ pressed }) => [
             styles.loginButton,
-            pressed && styles.buttonPressed,
+            (pressed || loading) && styles.buttonPressed,
           ]}
         >
           <Text style={styles.loginButtonText}>
-            Login
+            {loading ? 'Logging in…' : 'Login'}
           </Text>
         </Pressable>
 

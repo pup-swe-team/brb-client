@@ -39,13 +39,29 @@ export async function clearAuthTokens(): Promise<void> {
   await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
 }
 
+export function getApiErrorCode(error: unknown): string | undefined {
+  if (isAxiosError(error)) {
+    const code = (error.response?.data as { code?: unknown } | undefined)?.code;
+    if (typeof code === 'string') return code;
+  }
+  return undefined;
+}
+
 export function extractApiError(error: unknown): string {
   if (isAxiosError(error)) {
-    const data: any = error.response?.data;
+    // No response at all: the request never reached the server.
+    if (!error.response) {
+      return error.code === 'ECONNABORTED'
+        ? 'The request timed out. Please try again.'
+        : "Can't reach the server. Check your internet connection and try again.";
+    }
+
+    const data: any = error.response.data;
     if (data && typeof data === 'object') {
-      if (typeof data.detail === 'string') return data.detail;
+      if (typeof data.detail === 'string' && data.detail) return data.detail;
       const first = Object.values(data)[0];
-      if (Array.isArray(first)) return String(first[0] ?? '');
+      if (Array.isArray(first) && first[0]) return String(first[0]);
+      if (typeof first === 'string' && first) return first;
     }
   }
   return 'Something went wrong. Please try again.';

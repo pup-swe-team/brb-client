@@ -1,4 +1,4 @@
-import { http, USE_MOCK, clearAuthTokens, extractApiError, getRefreshToken, setAuthTokens } from '../../../services/http';
+import { http, USE_MOCK, clearAuthTokens, extractApiError, getApiErrorCode, getRefreshToken, setAuthTokens } from '../../../services/http';
 
 export type Affiliation = 'Student' | 'Faculty' | 'Staff';
 
@@ -33,6 +33,19 @@ export interface LoginResponse {
   tokens: AuthTokens;
 }
 
+// Thrown when the credentials are right but the email was never verified.
+// The screen sends the user back to the verification prompt instead of in.
+export class UnverifiedEmailError extends Error {
+  email: string;
+
+  constructor(email: string) {
+    super('Please verify your email before logging in.');
+    this.name = 'UnverifiedEmailError';
+    this.email = email;
+    Object.setPrototypeOf(this, UnverifiedEmailError.prototype);
+  }
+}
+
 const MOCK_USER: AuthUser = {
   id: 1,
   email: 'danielo.ang@iskolarngbayan.pup.edu.ph',
@@ -59,6 +72,8 @@ export async function login(email: string, password: string): Promise<LoginRespo
     return { user: MOCK_USER, tokens: MOCK_TOKENS };
   }
   const { data } = await http.post<LoginResponse>('/auth/login/', { email, password });
+  // Never store a session for an unverified account.
+  if (!data.user.email_verified_at) throw new UnverifiedEmailError(data.user.email);
   await setAuthTokens(data.tokens.access, data.tokens.refresh);
   return data;
 }
@@ -88,4 +103,4 @@ export async function refreshAccessToken(): Promise<string | null> {
   return data.access;
 }
 
-export { extractApiError };
+export { extractApiError, getApiErrorCode };

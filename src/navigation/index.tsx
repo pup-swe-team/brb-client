@@ -16,6 +16,7 @@ import {
 } from '@react-navigation/bottom-tabs';
 
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /* =========================================================
    AUTH SCREENS
@@ -58,7 +59,7 @@ import VerifyIdentityScreen from '../features/profile/screens/VerifyIdentityScre
 ========================================================= */
 
 import { ScreenContainer } from '../shared/components';
-import { colors } from '../theme';
+import { colors, spacing } from '../theme';
 
 /* =========================================================
    TYPES
@@ -79,6 +80,10 @@ const Stack =
 const Tab =
   createBottomTabNavigator<TabParamList>();
 
+// Height of the tab bar's own content (icon + label), excluding the
+// device's bottom safe area (Android nav buttons / gesture bar, iPhone home bar).
+const TAB_BAR_CONTENT_HEIGHT = 54;
+
 /* =========================================================
    TEMPORARY STUB SCREEN
 ========================================================= */
@@ -89,7 +94,7 @@ function StubScreen({
   label: string;
 }) {
   return (
-    <ScreenContainer>
+    <ScreenContainer edges={['top']}>
       <Text>{label}</Text>
     </ScreenContainer>
   );
@@ -100,6 +105,12 @@ function StubScreen({
 ========================================================= */
 
 function MainTabs() {
+  const insets = useSafeAreaInsets();
+
+  // Pad the bar by the real bottom inset so the system navigation never
+  // covers it. A fixed height ignores the inset.
+  const tabBarPaddingBottom = Math.max(insets.bottom, spacing.sm);
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -118,11 +129,14 @@ function MainTabs() {
           borderTopColor:
             colors.border,
 
-          height: 70,
+          height:
+            TAB_BAR_CONTENT_HEIGHT +
+            spacing.sm +
+            tabBarPaddingBottom,
 
-          paddingTop: 6,
+          paddingTop: spacing.sm,
 
-          paddingBottom: 8,
+          paddingBottom: tabBarPaddingBottom,
         },
 
         tabBarLabelStyle: {
@@ -214,15 +228,16 @@ function MainTabs() {
 
       <Tab.Screen
         name="AddItem"
-        children={() => (
+        options={{
+          title: 'Add Item',
+        }}
+      >
+        {() => (
           <StubScreen
             label="Add Item"
           />
         )}
-        options={{
-          title: 'Add Item',
-        }}
-      />
+      </Tab.Screen>
 
       {/* =================================================
           CHAT
@@ -231,15 +246,16 @@ function MainTabs() {
 
       <Tab.Screen
         name="Chat"
-        children={() => (
+        options={{
+          title: 'Chat',
+        }}
+      >
+        {() => (
           <StubScreen
             label="Chat"
           />
         )}
-        options={{
-          title: 'Chat',
-        }}
-      />
+      </Tab.Screen>
 
       {/* =================================================
           PROFILE

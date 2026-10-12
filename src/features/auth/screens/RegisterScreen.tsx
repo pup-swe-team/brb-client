@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
+  LayoutChangeEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,7 +9,7 @@ import {
 } from 'react-native';
 
 import { ScreenContainer, Input } from '../../../shared/components';
-import { colors } from '../../../theme';
+import { colors, spacing } from '../../../theme';
 import { extractApiError, register } from '../services/authService';
 
 type Affiliation = 'Student' | 'Faculty' | 'Staff';
@@ -28,6 +29,22 @@ export default function RegisterScreen({ navigation }: any) {
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Keep the active field visible above the keyboard.
+  const scrollRef = useRef<ScrollView>(null);
+  const fieldY = useRef<Record<string, number>>({});
+
+  const scrollToField = (key: string) => {
+    // Wait for the keyboard to finish resizing the viewport before scrolling.
+    setTimeout(() => {
+      const y = fieldY.current[key];
+      if (y === undefined) return;
+      scrollRef.current?.scrollTo({
+        y: Math.max(y - spacing.lg, 0),
+        animated: true,
+      });
+    }, 250);
+  };
 
   const isPupEmail =
     email.toLowerCase().endsWith('@pup.edu.ph') ||
@@ -123,11 +140,13 @@ export default function RegisterScreen({ navigation }: any) {
   }
 
   return (
-    <ScreenContainer auth>
+    <ScreenContainer auth keyboardAware>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {/* LOGO */}
         <View style={styles.logo}>
@@ -144,9 +163,13 @@ export default function RegisterScreen({ navigation }: any) {
         </Text>
 
         {/* FULL NAME */}
-        <View style={styles.field}>
+        <View style={styles.field} onLayout={(e: LayoutChangeEvent) => {
+            fieldY.current.fullName = e.nativeEvent.layout.y;
+          }}>
           <Input
             label="Full Name"
+            required
+            onFocus={() => scrollToField('fullName')}
             value={fullName}
             onChangeText={(value) => {
               setFullName(value);
@@ -158,9 +181,13 @@ export default function RegisterScreen({ navigation }: any) {
         </View>
 
         {/* PUP WEBMAIL */}
-        <View style={styles.field}>
+        <View style={styles.field} onLayout={(e: LayoutChangeEvent) => {
+            fieldY.current.email = e.nativeEvent.layout.y;
+          }}>
           <Input
             label="PUP Webmail"
+            required
+            onFocus={() => scrollToField('email')}
             value={email}
             onChangeText={(value) => {
               setEmail(value);
@@ -244,9 +271,13 @@ export default function RegisterScreen({ navigation }: any) {
         </View>
 
         {/* CONTACT NUMBER */}
-        <View style={styles.field}>
+        <View style={styles.field} onLayout={(e: LayoutChangeEvent) => {
+            fieldY.current.contact = e.nativeEvent.layout.y;
+          }}>
           <Input
             label="Contact Number"
+            required
+            onFocus={() => scrollToField('contact')}
             value={contactNumber}
             onChangeText={(value) => {
               setContactNumber(value);
@@ -258,9 +289,13 @@ export default function RegisterScreen({ navigation }: any) {
         </View>
 
         {/* HOME ADDRESS */}
-        <View style={styles.field}>
+        <View style={styles.field} onLayout={(e: LayoutChangeEvent) => {
+            fieldY.current.address = e.nativeEvent.layout.y;
+          }}>
           <Input
             label="Home Address"
+            required
+            onFocus={() => scrollToField('address')}
             value={homeAddress}
             onChangeText={(value) => {
               setHomeAddress(value);
@@ -271,9 +306,13 @@ export default function RegisterScreen({ navigation }: any) {
         </View>
 
         {/* PASSWORD */}
-        <View style={styles.passwordSection}>
+        <View style={styles.passwordSection} onLayout={(e: LayoutChangeEvent) => {
+            fieldY.current.password = e.nativeEvent.layout.y;
+          }}>
           <Input
             label="Password"
+            required
+            onFocus={() => scrollToField('password')}
             value={password}
             onChangeText={(value) => {
               setPassword(value);
@@ -331,9 +370,13 @@ export default function RegisterScreen({ navigation }: any) {
         </View>
 
         {/* CONFIRM PASSWORD */}
-        <View style={styles.confirmSection}>
+        <View style={styles.confirmSection} onLayout={(e: LayoutChangeEvent) => {
+            fieldY.current.confirm = e.nativeEvent.layout.y;
+          }}>
           <Input
             label="Confirm Password"
+            required
+            onFocus={() => scrollToField('confirm')}
             value={confirmPassword}
             onChangeText={(value) => {
               setConfirmPassword(value);
@@ -458,8 +501,8 @@ export default function RegisterScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 7,
-    paddingBottom: 18,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xxxl,
   },
 
   logo: {
