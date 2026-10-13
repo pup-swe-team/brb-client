@@ -1,42 +1,92 @@
 import { create, isAxiosError } from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
 export const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK !== 'false';
 export const http = create({ baseURL: process.env.EXPO_PUBLIC_API_URL, timeout: 15000 });
 export const TOKEN_KEY = 'brb_access_token';
 export const REFRESH_TOKEN_KEY = 'brb_refresh_token';
 
+// SecureStore has no web native module (its calls throw on web), so tokens fall
+// back to localStorage there. Native builds keep using the secure keychain.
+interface WebStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+const webStorage =
+  Platform.OS === 'web'
+    ? (globalThis as { localStorage?: WebStorage }).localStorage ?? null
+    : null;
+
+async function readItem(key: string): Promise<string | null> {
+  if (webStorage) {
+    try {
+      return webStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+  return SecureStore.getItemAsync(key);
+}
+
+async function writeItem(key: string, value: string): Promise<void> {
+  if (webStorage) {
+    try {
+      webStorage.setItem(key, value);
+      return;
+    } catch {
+      return;
+    }
+  }
+  await SecureStore.setItemAsync(key, value);
+}
+
+async function removeItem(key: string): Promise<void> {
+  if (webStorage) {
+    try {
+      webStorage.removeItem(key);
+      return;
+    } catch {
+      return;
+    }
+  }
+  await SecureStore.deleteItemAsync(key);
+}
+
 const PUBLIC_ENDPOINTS = [
   '/auth/register/',
   '/auth/login/',
   '/auth/verify-email/',
+  '/auth/resend-verification/',
   '/auth/token/refresh/',
 ];
 
 http.interceptors.request.use(async (cfg) => {
   if (!PUBLIC_ENDPOINTS.some((p) => cfg.url?.includes(p))) {
-    const token = await SecureStore.getItemAsync(TOKEN_KEY);
+    const token = await readItem(TOKEN_KEY);
     if (token) cfg.headers.Authorization = `Bearer ${token}`;
   }
   return cfg;
 });
 
 export async function getAccessToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(TOKEN_KEY);
+  return readItem(TOKEN_KEY);
 }
 
 export async function getRefreshToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+  return readItem(REFRESH_TOKEN_KEY);
 }
 
 export async function setAuthTokens(access: string, refresh?: string): Promise<void> {
-  await SecureStore.setItemAsync(TOKEN_KEY, access);
-  if (refresh) await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refresh);
+  await writeItem(TOKEN_KEY, access);
+  if (refresh) await writeItem(REFRESH_TOKEN_KEY, refresh);
 }
 
 export async function clearAuthTokens(): Promise<void> {
-  await SecureStore.deleteItemAsync(TOKEN_KEY);
-  await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+  await removeItem(TOKEN_KEY);
+  await removeItem(REFRESH_TOKEN_KEY);
 }
 
 export function getApiErrorCode(error: unknown): string | undefined {

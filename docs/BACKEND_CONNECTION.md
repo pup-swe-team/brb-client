@@ -41,6 +41,7 @@ Auth tokens are stored via `expo-secure-store` (`src/services/http.ts`):
 | POST | `/auth/register/` | `email, password, password_confirm, full_name, contact_number, affiliation` | `{ message, user }` (201) |
 | POST | `/auth/verify-email/` | `uid, token` (from emailed link) | `{ detail }` |
 | POST | `/auth/login/` | `email, password` | `{ user, tokens: { access, refresh } }` |
+| GET | `/auth/me/` | — (auth) | current `user` (profile card data) |
 | POST | `/auth/token/refresh/` | `refresh` | `{ access }` |
 | POST | `/auth/logout/` | `refresh` | 204 (blacklists token) |
 
@@ -71,9 +72,13 @@ Auth tokens are stored via `expo-secure-store` (`src/services/http.ts`):
 - `document_type` takes a **lookup name** (`pup_id`, `government_id`), not a
   number. The screen's display values (`PUP ID`, `Government ID`) must be
   mapped via `DOC_TYPE_LOOKUP` in `verification.ts`.
-- Backend also **requires** `id_number` and `name_on_document`. The current
-  `VerifyIdentityScreen` does **not** collect them, so a real submission will
-  be rejected with a validation error until the screen adds those two inputs.
+- The screen must collect `id_number` and `name_on_document`:
+  `VerifyIdentityScreen` provides those inputs, and `verification.ts` sends
+  them; the backend rejects submissions that omit them.
+- The multipart body is built platform-aware in `verification.ts`: on web the
+  picked image's real `File` is appended directly, on native the
+  `{ uri, name, type }` object; `Content-Type` is left unset so each platform's
+  serialiser adds the boundary.
 
 ### ORDERS / LISTINGS — `apps/orders`
 
@@ -94,17 +99,9 @@ Auth tokens are stored via `expo-secure-store` (`src/services/http.ts`):
 2. **Refresh-token handling.** `authService.refreshAccessToken()` exists but
    the axios interceptor does not yet retry a request once with a fresh access
    token on 401. `http.ts` has a `// TODO` for this.
-3. **Identity document fields.** `VerifyIdentityScreen` needs `id_number` and
-   `name_on_document` inputs before real submissions can succeed (this branch
-   deliberately kept the screen's design unchanged, so it is still
-   mock-gated).
-4. **Orders / listings.** Entire backend module pending. Keep
+3. **Orders / listings.** Entire backend module pending. Keep
    `ordersService.ts` mock-first until endpoints land.
-5. **CORS for Expo Web.** The backend has no `django-cors-headers`; testing via
-   `expo start --web` will need CORS enabled on the Django side and
-   `extraHeaders`/credentials config on this end. Native (iOS/Android) is not
-   affected.
-6. **Home / Search / Chat / AddItem screens** still use static local data in
+4. **Home / Search / Chat / AddItem screens** still use static local data in
    the UI — no service layer yet. Wire them the same way
    `authService.ts`/`verification.ts` were wired: mock-first, then swap the
    mock branch for a real `http.*` call behind `EXPO_PUBLIC_USE_MOCK`.
@@ -120,5 +117,6 @@ Auth tokens are stored via `expo-secure-store` (`src/services/http.ts`):
 4. Both screens surface backend errors through the existing error UI
    (no design changes were made on this branch).
 
-Sign-up → verification → login is fully wired. Identity submission is
-contract-correct but blocked on missing screen inputs (see #3).
+Sign-up → verification → login → profile data (`/auth/me/`) are fully wired.
+Identity submission is wired end-to-end (real `id_number`, `name_on_document`,
+photo) and works on both native and web.

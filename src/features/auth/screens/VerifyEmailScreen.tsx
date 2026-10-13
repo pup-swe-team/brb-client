@@ -19,6 +19,7 @@ import { ScreenContainer } from '../../../shared/components';
 import { colors } from '../../../theme';
 import {
   extractApiError,
+  resendVerificationEmail,
   verifyEmail,
 } from '../services/authService';
 
@@ -54,9 +55,8 @@ export default function VerifyEmailScreen({
   navigation,
   route,
 }: any) {
-  const email =
-    route?.params?.email ||
-    'danielo.ang@iskolarngbayan.pup.edu.ph';
+  const email: string | undefined =
+    route?.params?.email;
 
   const uid = route?.params?.uid;
   const token = route?.params?.token;
@@ -68,6 +68,8 @@ export default function VerifyEmailScreen({
   const [modalVisible, setModalVisible] = useState(false);
   const [linkInput, setLinkInput] = useState('');
   const [linkError, setLinkError] = useState('');
+  const [resending, setResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
 
   const runVerification = useCallback(
     async (u: string, t: string) => {
@@ -119,6 +121,27 @@ export default function VerifyEmailScreen({
     runVerification(parsed.uid, parsed.token);
   };
 
+  const handleResend = useCallback(async () => {
+    if (!email) {
+      setError(
+        "We don't have your email address yet. Go back, log in, and try again.",
+      );
+      return;
+    }
+
+    setResending(true);
+    setError('');
+    setResendMessage('');
+    try {
+      const message = await resendVerificationEmail(email);
+      setResendMessage(message);
+    } catch (err) {
+      setError(extractApiError(err));
+    } finally {
+      setResending(false);
+    }
+  }, [email]);
+
   return (
     <ScreenContainer auth>
       <View style={styles.container}>
@@ -157,7 +180,7 @@ export default function VerifyEmailScreen({
               </Text>
 
               <Text style={styles.email}>
-                {email}.
+                {email ? `${email}.` : ''}
               </Text>
 
               <Text style={styles.description}>
@@ -179,6 +202,22 @@ export default function VerifyEmailScreen({
 
               <Text style={styles.errorText}>
                 {error}
+              </Text>
+            </View>
+          ) : null}
+
+          {/* RESEND CONFIRMATION */}
+          {resendMessage ? (
+            <View style={styles.successBox}>
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={17}
+                color={colors.success}
+                style={styles.successIcon}
+              />
+
+              <Text style={styles.successText}>
+                {resendMessage}
               </Text>
             </View>
           ) : null}
@@ -207,14 +246,21 @@ export default function VerifyEmailScreen({
               style={({ pressed }) => [
                 styles.resendButton,
                 pressed && styles.pressed,
+                resending && styles.resendButtonDisabled,
               ]}
-              onPress={() =>
-                navigation.navigate('EmailVerified')
-              }
+              onPress={handleResend}
+              disabled={resending}
             >
-              <Text style={styles.resendText}>
-                Resend Email
-              </Text>
+              {resending ? (
+                <ActivityIndicator
+                  size="small"
+                  color={colors.white}
+                />
+              ) : (
+                <Text style={styles.resendText}>
+                  Resend Email
+                </Text>
+              )}
             </Pressable>
           )}
 
@@ -563,6 +609,36 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontSize: 11,
     lineHeight: 16,
+  },
+
+  successBox: {
+    width: '100%',
+    minHeight: 60,
+    borderWidth: 1,
+    borderColor: colors.success,
+    borderRadius: 9,
+    backgroundColor: colors.bg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    marginTop: 18,
+    marginBottom: 14,
+  },
+
+  successIcon: {
+    marginRight: 10,
+  },
+
+  successText: {
+    flex: 1,
+    color: colors.success,
+    fontSize: 11,
+    lineHeight: 16,
+  },
+
+  resendButtonDisabled: {
+    opacity: 0.6,
   },
 
   pressed: {

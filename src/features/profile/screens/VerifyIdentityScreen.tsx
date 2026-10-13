@@ -2,15 +2,24 @@ import React, { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { isAxiosError } from 'axios';
 
 import { colors, radius, spacing } from '../../../theme';
-import { Button, ScreenContainer } from '../../../shared/components';
+import { Button, Input, ScreenContainer } from '../../../shared/components';
 import { Checkbox } from '../../../shared/components/Checkbox';
 import { IdDocumentType, submitIdDocument } from '../services/verification';
 
 const DOC_TYPES: IdDocumentType[] = ['PUP ID', 'Government ID'];
 const CONSENT_LABEL =
   'I agree that my ID will be stored and used to help recover items if a borrowed item is lost or not returned.';
+
+function pickField(data: unknown, key: string): string | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const value = (data as Record<string, unknown>)[key];
+  if (Array.isArray(value) && value.length > 0) return String(value[0]);
+  if (typeof value === 'string' && value) return value;
+  return undefined;
+}
 
 function Shell({
   title,
@@ -44,18 +53,56 @@ function Shell({
 
 export default function VerifyIdentityScreen({ navigation }: any) {
   const [docType, setDocType] = useState<IdDocumentType>('PUP ID');
-  const [uri, setUri] = useState<string | null>(null);
+  const [asset, setAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [consent, setConsent] = useState(false);
-  const [errors, setErrors] = useState<{ file?: string; consent?: string; submit?: string }>({});
+  const [idNumber, setIdNumber] = useState('');
+  const [nameOnDocument, setNameOnDocument] = useState('');
+  const [errors, setErrors] = useState<{
+    file?: string;
+    consent?: string;
+    submit?: string;
+    idNumber?: string;
+    nameOnDocument?: string;
+  }>({});
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  const uri = asset?.uri ?? null;
+
   const pick = async (source: 'library' | 'camera') => {
-    const launch = source === 'camera' ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
-    const result = await launch({ mediaTypes: ['images'], quality: 0.8 });
-    if (!result.canceled) {
-      setUri(result.assets[0].uri);
-      setErrors((e) => ({ ...e, file: undefined }));
+    // iOS throws MissingCameraPermissionException if launchCameraAsync runs
+    // without the permission having been requested first (BE-BUG-0005).
+    const cameraRequested = source === 'camera';
+    const permission = cameraRequested
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      const base =
+        cameraRequested
+          ? 'Camera access is needed to take a photo of your ID.'
+          : 'Photo library access is needed to choose a photo of your ID.';
+      setErrors((e) => ({
+        ...e,
+        file: permission.canAskAgain
+          ? base
+          : `${base} Turn it on in your device Settings.`,
+      }));
+      return;
+    }
+
+    const launch = cameraRequested ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
+    try {
+      const result = await launch({ mediaTypes: ['images'], quality: 0.8 });
+      if (!result.canceled) {
+        setAsset(result.assets[0]);
+        setErrors((e) => ({ ...e, file: undefined }));
+      }
+    } catch {
+      setErrors((e) => ({
+        ...e,
+        file: 'Could not open the camera. Please try again.',
+      }));
     }
   };
 
@@ -63,16 +110,38 @@ export default function VerifyIdentityScreen({ navigation }: any) {
     const next = {
       file: uri ? undefined : 'Upload a clear photo of your ID.',
       consent: consent ? undefined : 'You need to agree before submitting.',
+      idNumber: idNumber.trim().length >= 2 ? undefined : 'Enter the ID number printed on your ID.',
+      nameOnDocument: nameOnDocument.trim() ? undefined : 'Enter the name exactly as printed on your ID.',
     };
     setErrors(next);
-    if (next.file || next.consent || !uri) return;
+    if (next.file || next.consent || next.idNumber || next.nameOnDocument || !uri || !asset) return;
 
     setLoading(true);
     try {
-      await submitIdDocument({ documentType: docType, uri, consent });
+      await submitIdDocument({
+        documentType: docType,
+        uri,
+        file: asset.file,
+        fileName: asset.fileName ?? undefined,
+        mimeType: asset.mimeType,
+        consent,
+        idNumber: idNumber.trim(),
+        nameOnDocument: nameOnDocument.trim(),
+      });
       setSubmitted(true);
-    } catch {
-      setErrors({ submit: 'Could not submit your ID. Check your connection and try again.' });
+    } catch (err) {
+      const data = isAxiosError(err) ? err.response?.data : null;
+      setErrors({
+        idNumber: pickField(data, 'id_number'),
+        nameOnDocument: pickField(data, 'name_on_document'),
+        file: pickField(data, 'document_file'),
+        consent: pickField(data, 'consent_given'),
+        submit:
+          pickField(data, 'email') ??
+          pickField(data, 'detail') ??
+          pickField(data, 'non_field_errors') ??
+          'Could not submit your ID. Check your connection and try again.',
+      });
     } finally {
       setLoading(false);
     }
@@ -125,6 +194,36 @@ export default function VerifyIdentityScreen({ navigation }: any) {
               </Pressable>
             ))}
           </View>
+        </View>
+
+        {/* ID DETAILS */}
+        <View style={s.card}>
+          <Input
+            label="ID number"
+            required
+            value={idNumber}
+            error={errors.idNumber}
+            onChangeText={(v) => {
+              setIdNumber(v);
+              setErrors((e) => ({ ...e, idNumber: undefined }));
+            }}
+            placeholder="e.g. 2024-00123"
+            autoCapitalize="characters"
+            autoCorrect={false}
+          />
+          <Input
+            label="Name on the ID"
+            required
+            value={nameOnDocument}
+            error={errors.nameOnDocument}
+            onChangeText={(v) => {
+              setNameOnDocument(v);
+              setErrors((e) => ({ ...e, nameOnDocument: undefined }));
+            }}
+            placeholder="Exactly as printed on the ID"
+            autoCapitalize="words"
+            autoCorrect={false}
+          />
         </View>
 
         {/* UPLOAD */}

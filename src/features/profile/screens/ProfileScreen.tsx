@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radius, spacing } from '../../../theme';
@@ -15,6 +16,12 @@ import {
   VerificationStatus,
   useVerificationGate,
 } from '../../../shared/hooks/useVerificationGate';
+import { getCurrentUser } from '../../auth/services/authService';
+import type { AuthUser } from '../../auth/services/authService';
+import {
+  getLatestIdentityDocumentStatus,
+  type IdentityDocumentStatus,
+} from '../services/verification';
 
 type ItemStatus =
   | 'Requested'
@@ -163,14 +170,80 @@ function BorrowedItemCard({
   );
 }
 
+function toVerificationStatus(
+  status: IdentityDocumentStatus | undefined,
+): VerificationStatus {
+  switch (status) {
+    case 'pending':
+      return 'Pending';
+    case 'approved':
+      return 'Verified';
+    case 'rejected':
+      return 'Rejected';
+    default:
+      return 'Unverified';
+  }
+}
+
 export default function ProfileScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const [role, setRole] = useState<'Borrower' | 'Lender'>(
     'Borrower',
   );
 
-  // TODO: replace with user.verificationStatus once it comes from auth/user data.
-  const [verificationStatus] = useState<VerificationStatus>('Unverified');
+  // Real account details from GET /auth/me/ (BE-BUG-0002). The profile card
+  // used to hardcode a placeholder synonym (always "Student"); now it renders
+  // the caller's own name and affiliation from the backend.
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getCurrentUser()
+      .then((account) => {
+        if (active) setUser(account);
+      })
+      .catch(() => {
+        if (active) setUser(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const displayName = user?.full_name ?? '';
+  const initials =
+    displayName
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((word) => word[0]?.toUpperCase())
+      .join('') || 'BRB';
+
+  // Real submission status from GET /identity/documents/list/ — the review
+  // loop: submit → admin approves/rejects → the status below reflects it.
+  // Refetched on focus so a submission made on VerifyIdentityScreen shows up
+  // as "Under review" right after returning to this tab.
+  const [verificationStatus, setVerificationStatus] =
+    useState<VerificationStatus>('Unverified');
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getLatestIdentityDocumentStatus()
+        .then((status) => {
+          if (active) {
+            setVerificationStatus(toVerificationStatus(status));
+          }
+        })
+        .catch(() => {
+          // Non-fatal: keep the current value and refetch on the next focus.
+        });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
   const { guard, gateModal } = useVerificationGate(verificationStatus);
   const isVerified = verificationStatus === 'Verified';
   const needsVerification =
@@ -223,16 +296,18 @@ export default function ProfileScreen({ navigation }: any) {
           {/* PROFILE INFORMATION */}
           <View style={styles.profileCard}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>AL</Text>
+              <Text style={styles.avatarText}>{initials}</Text>
             </View>
 
             <View style={styles.profileInfo}>
               <Text style={styles.name}>
-                Anthea Lyn Czeisler Espiritu
+                {displayName}
               </Text>
 
               <View style={styles.verifiedRow}>
-                <AffiliationBadge affiliation="Student" />
+                {user?.affiliation ? (
+                  <AffiliationBadge affiliation={user.affiliation} />
+                ) : null}
                 {isVerified ? (
                   <View style={styles.verifiedBadge}>
                     <Ionicons
@@ -268,7 +343,7 @@ export default function ProfileScreen({ navigation }: any) {
               </View>
 
               <Text style={styles.affiliation}>
-                Student · BS in Computer Science 3rd Year
+                {user?.affiliation ?? ''}
               </Text>
 
               <View style={styles.ratingRow}>

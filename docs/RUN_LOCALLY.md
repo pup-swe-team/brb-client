@@ -7,18 +7,19 @@ step is opening the Render dashboard to copy the connection string.
 
 `brb-client` (Expo Go on your phone) → `brb-server` (your PC) → Render Postgres.
 
-**Run order at a glance:** configure the `.env` files → make sure `copup_db` is up
-→ start the backend → start the frontend → open it on the phone.
+**Run order at a glance:** make sure `copup_db` is up → configure the `.env`
+files → start the backend → start the frontend → open it on the phone.
 
 ---
 
 ## TL;DR
 
-1. Copy both `.env.example` files and fill them in — **Step 1**.
-2. Copy the `copup_db` **External Database URL** into `brb-server/.env` — **Step 2**.
+1. Copy the shared `copup_db` **External Database URL** from Render — **Step 1**.
+2. Copy both `.env.example` files and fill them in (that URL goes in
+   `brb-server/.env`) — **Step 2**.
 3. Backend: `uv sync` → `migrate` → `runserver 0.0.0.0:8000` — **Step 3**.
 4. Frontend: `npx expo start`, then scan the QR — **Step 4**, **Step 5**.
-5. Optional: review identity documents in **Django Admin** — **Step 6**.
+5. Optional: review identity documents in the **Admin Portal** — **Step 6**.
 
 ---
 
@@ -36,12 +37,35 @@ No `bun` needed. This client uses `npm`; the backend uses `uv`.
 
 ---
 
-## Step 1 — Configure the `.env` files first
+## Step 1 — Prepare the database (Render Postgres `copup_db`)
+
+1. Log in to the Render dashboard.
+2. Go to **Databases** → the shared `copup_db` instance.
+3. Open **Connections** and copy the **External Database URL**
+   (`postgresql://USER:PASSWORD@HOST:5432/DBNAME`).
+   - Copy the **External** string, not the Internal one — the Internal host only
+     resolves from inside Render's network and will fail from your PC.
+4. Put it in `brb-server/.env` as `DATABASE_URL` (Step 2a).
+5. A suspended free Postgres can take a few seconds to accept its first
+   connection. Running `migrate` in Step 3 wakes it.
+
+**Shared database warning:** you are writing to `copup_db`, which the whole team
+sees. Do **not** run the test suite against it — tests create and drop a whole
+`test_copup_db`. For tests, override to SQLite for that command only:
+
+```powershell
+$env:DATABASE_URL="sqlite:///db.sqlite3"; uv run python manage.py test
+Remove-Item Env:\DATABASE_URL
+```
+
+---
+
+## Step 2 — Configure the `.env` files
 
 Do this before starting anything. Both apps read `.env` on boot, so a wrong value
 here means the phone silently fails to reach the backend.
 
-### 1a. Backend — `brb-server/.env`
+### 2a. Backend — `brb-server/.env`
 
 ```bash
 cd brb-server
@@ -51,7 +75,7 @@ Copy-Item .env.example .env        # PowerShell
 Fill it in:
 
 ```bash
-# From Step 2 (Render → copup_db → External Database URL)
+# From Step 1 (Render → copup_db → External Database URL)
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME
 
 # Your PC's LAN IP (see "Appendix — Find your PC's LAN IP") so the phone is not rejected
@@ -63,7 +87,40 @@ ALLOWED_HOSTS=localhost,127.0.0.1,<YOUR-PC-LAN-IP>
 - Emails print to the terminal (`EMAIL_BACKEND=console`), so the verification link
   shows up in the runserver window when you register.
 
-### 1b. Frontend — `brb-client/.env`
+**Identity-document encryption key (skip unless you run in "production mode"):**
+
+`brb-server/.env` has a line `IDENTITY_DOCUMENT_ENCRYPTION_KEY=`. Two things to
+know:
+
+1. **Where the key comes from:** nowhere — you *make* it. It is a random string
+   the server uses to scramble ID photos before saving them. It isn't stored
+   anywhere in the project, so there is no place to "get" it from. Generate one
+   once, then paste the printed value into the `IDENTITY_DOCUMENT_ENCRYPTION_KEY=` line:
+
+   ```powershell
+   uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+
+2. **When you actually need it:** only when you run the backend in **production
+   mode** (`DEBUG=False`). DEBUG is Django's "developer mode" switch — `DEBUG=True`
+   (the normal `runserver` default) means detailed error pages and relaxed
+   behavior; `DEBUG=False` means "act like the live website", which locks things
+   down. In developer mode the key stays empty and nothing breaks (photos are
+   saved as-is). In production mode a missing key deliberately crashes ID
+   uploads/reviews with `ImproperlyConfigured` ("fail closed") instead of saving
+   an unencrypted photo.
+
+   So you only touch this if you turned on production mode locally *or* you are
+   managing the live Render site.
+
+**The one rule that matters:** the **same** key must be used everywhere that
+reads the **same** database. If someone on the team already set a key (e.g. on
+the Render dashboard → `brb-server` → **Environment**), copy that exact value —
+don't generate a new one, or old photos become unreadable (`InvalidToken`). If
+no one has set one yet, generate it and share it with the team so everyone uses
+the same value.
+
+### 2b. Frontend — `brb-client/.env`
 
 ```bash
 cd brb-client
@@ -82,29 +139,6 @@ EXPO_PUBLIC_USE_MOCK=false
 - From a **phone**, `localhost` means the phone itself, not your PC — always use
   your PC's LAN IP.
 - Restart `expo start` after editing this file (env vars are read on boot).
-
----
-
-## Step 2 — Prepare the database (Render Postgres `copup_db`)
-
-1. Log in to the Render dashboard.
-2. Go to **Databases** → the shared `copup_db` instance.
-3. Open **Connections** and copy the **External Database URL**
-   (`postgresql://USER:PASSWORD@HOST:5432/DBNAME`).
-   - Copy the **External** string, not the Internal one — the Internal host only
-     resolves from inside Render's network and will fail from your PC.
-4. Put it in `brb-server/.env` as `DATABASE_URL` (Step 1a).
-5. A suspended free Postgres can take a few seconds to accept its first
-   connection. Running `migrate` in Step 3 wakes it.
-
-**Shared database warning:** you are writing to `copup_db`, which the whole team
-sees. Do **not** run the test suite against it — tests create and drop a whole
-`test_copup_db`. For tests, override to SQLite for that command only:
-
-```powershell
-$env:DATABASE_URL="sqlite:///db.sqlite3"; uv run python manage.py test
-Remove-Item Env:\DATABASE_URL
-```
 
 ---
 
@@ -159,53 +193,89 @@ npx expo start
 
 CORS does not apply to Expo Go; it only affects `expo start --web`.
 
+**Camera / photo permission on iOS (BE-BUG-0005):**
+
+- The first time you tap **Take photo**, iOS shows a camera permission prompt —
+  tap **Allow**, and only then does the camera open. Android 6+ shows the same
+  prompt for the camera.
+- If you previously tapped **Don't Allow**, iOS will **not** re-prompt. Enable it
+  in the system Settings, then come back and tap the button again:
+  - **Standalone app build:** Settings → *BRB* → **Camera** (and **Photos**
+    for *Choose photo*).
+  - **Expo Go:** Settings → *Expo Go* → **Camera** / **Photos**.
+- With no permission, the app now shows a clear message under the upload card
+  instead of crashing.
+- In Expo Go nothing else is needed — the prompt uses Expo Go's own descriptions.
+  The camera/photo strings in `app.json` (the `expo-image-picker` plugin) only
+  apply to a **native build** (`npx expo run:ios` / `eas build`): they land in
+  Info.plist at build time, so rebuild after editing `app.json`.
+
 ---
 
-## Step 6 — Django Admin (approve / reject identity documents)
+## Step 6 — Admin Portal (approve / reject identity documents)
 
-The identity-verification review queue (CP-106) lives in **Django Admin**, not in
-the app. Testers use it to approve or reject the IDs users submit.
+Two admin interfaces exist, and the difference matters:
+
+| Path | What it is | Styling |
+|---|---|---|
+| **`/portal/`** | **This is the Admin Portal** (BE-BUG-0006) — the team's custom, styled review UI (CoPUPAdmin). Sign-in → dashboard → verification queue → review → approve/reject. | Styled (custom CSS). **Test this one.** |
+| **`/admin/`** | Django's **default admin** that ships with the framework — general CRUD (users, lookup tables), still used for maintenance. | Plain default Django styling (this is the "old" look). |
+
+Testers approve/reject the IDs users submit in the **Admin Portal** at `/portal/`.
+It is a browser screen, so testers open it on a PC or phone browser — there is
+no admin UI inside the app.
 
 1. **Create an admin account** (once). The username field is **email**, not a
    handle:
    ```bash
    cd brb-server
    uv run python manage.py createsuperuser
-   # Email: admin@pup.edu.ph   (any address you'll remember)
+   # Email: admin@pup.edu.ph   (must end in @pup.edu.ph)
    ```
    `createsuperuser` sets `is_staff=True` automatically — that flag is what the
-   admin gates on (D-03), so no extra setup is needed.
+   admin gates on (D-03), so no extra setup is needed. Admin accounts may **only**
+   use `@pup.edu.ph`; anything else (e.g. `@gmail.com`) is refused with an error.
 
-2. **Open the admin** with the backend running
+2. **Open the Admin Portal** with the backend running
    (`uv run python manage.py runserver 0.0.0.0:8000`):
-   - On your PC: `http://localhost:8000/admin/`
-   - From the phone / another device: `http://<YOUR-PC-LAN-IP>:8000/admin/`
+   - On your PC: `http://localhost:8000/portal/`
+   - From the phone / another device: `http://<YOUR-PC-LAN-IP>:8000/portal/`
      (the same LAN IP you put in `ALLOWED_HOSTS`).
 
-3. **Log in** with the email + password from step 1. You land on the admin index;
-   the groups to use are **Identity documents** (the review queue) and, for
-   auditing, **Admin access logs**.
+3. **Log in** with the email + password from step 1. You land on the **Dashboard**;
+   open **Verification Queue** from the sidebar to see pending submissions.
 
-4. **Review a submission.** Open **Identity documents** → tick one or more
-   `pending` rows → choose an action from the dropdown → **Go**:
-   - **Approve selected identity documents** — unlocks the user's
-     `IsIdentityVerified` gate.
-   - **Reject selected identity documents** — the next page asks for a
-     **rejection reason** (required). Enter it and click **Reject**. The reason is
-     sent to the user and they may resubmit.
+4. **Review a submission.** Pending tab → open a member's **Review** page → **Approve**
+   or **Reject** (a rejection reason is required). The status updates the member's
+   profile and the user gets a notification. (The old default Django admin at
+   `/admin/` also has a bulk **Identity documents** action — the portal and Admin
+   write to the same audit trail.)
 
 **Notes:**
 
 - `createsuperuser` writes to whatever `DATABASE_URL` points at. In the default
   setup that is the shared `copup_db`, so the admin account is visible to the
   whole team — coordinate before creating more than one.
-- The admin's **Download Document** link opens a **JWT-only** API endpoint, so it
-  returns `401` when clicked from a browser session. The admin pages themselves
-  work fine; use the API with a Bearer token if you truly need the raw bytes.
+- The admin's **Download Document** link works from your browser session: the
+  endpoint accepts both JWT and Django Admin session authentication (D-18), and
+  every view/download is recorded in **Admin access logs** (CP-107 / FR14).
 - Every view, approval and rejection writes an `AdminAccessLog` row
   (CP-107 / FR14), which you can inspect under **Admin access logs**.
 - If you only want a throwaway admin, point `DATABASE_URL` at SQLite for that
-  session (see the SQLite override in Step 2) rather than touching `copup_db`.
+  session (see the SQLite override in Step 1) rather than touching `copup_db`.
+
+**Key facts:**
+
+- **Same account, same data.** It gates on the same `is_staff` flag, so the
+  `createsuperuser` account from Step 6 signs in there too. A regular member
+  account is refused at sign-in ("Only administrator accounts can sign in
+  here.").
+- **Same flow, same audit trail.** Approving/rejecting calls the same service as
+  the Admin action, so the user's in-app notification, email and `AdminAccessLog`
+  entries are identical; merely opening a review page writes a `view` log row.
+- The sidebar shows the remaining admin areas (Users, Reports, Content
+  Moderation, System Settings, Audit Log, …) as **planned for a later sprint** —
+  only Dashboard and Verification Queue are wired up so far.
 
 ---
 
@@ -239,6 +309,9 @@ already-deployed service:
    browser (or click **Restart** on the service) and wait for a response.
 
 The Render service uses the same `copup_db`, so data matches the default setup.
+If ID uploads fail on the deployed service, its `IDENTITY_DOCUMENT_ENCRYPTION_KEY`
+env var is probably missing — add it in Render → `brb-server` → **Environment**
+(see the key note in **Step 2a**).
 
 ---
 
@@ -304,5 +377,5 @@ Rules:
 ---
 
 See `docs/BACKEND_CONNECTION.md` for the endpoint contract, payloads, and the
-placeholders that still need work (identity fields, order endpoints, deep link,
-refresh handling).
+placeholders that still need work (order endpoints, deep link, refresh
+handling).

@@ -84,6 +84,18 @@ export async function verifyEmail(uid: string, token: string): Promise<string> {
   return data.message;
 }
 
+export async function getCurrentUser(): Promise<AuthUser> {
+  if (USE_MOCK) return MOCK_USER;
+  const { data } = await http.get<AuthUser>('/auth/me/');
+  return data;
+}
+
+export async function resendVerificationEmail(email: string): Promise<string> {
+  if (USE_MOCK) return 'We sent a new verification link to your email.';
+  const { data } = await http.post<{ message: string }>('/auth/resend-verification/', { email });
+  return data.message;
+}
+
 export async function logout(): Promise<void> {
   const refresh = await getRefreshToken();
   try {
