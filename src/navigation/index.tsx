@@ -31,6 +31,7 @@ import AccountSuspendedScreen from '../features/auth/screens/AccountSuspendedScr
 import SignUpMessageScreen from '../features/auth/screens/SignUpMessageScreen';
 import ForgotPasswordScreen from '../features/auth/screens/ForgotPasswordScreen';
 import PasswordResetSentScreen from '../features/auth/screens/PasswordResetSentScreen';
+import ResetPasswordScreen from '../features/auth/screens/ResetPasswordScreen';
 import TermsScreen from '../features/auth/screens/TermsScreen';
 import PrivacyScreen from '../features/auth/screens/PrivacyScreen';
 
@@ -53,6 +54,11 @@ import SearchScreen from '../features/listings/screens/SearchScreen';
 
 import ProfileScreen from '../features/profile/screens/ProfileScreen';
 import VerifyIdentityScreen from '../features/profile/screens/VerifyIdentityScreen';
+import SettingsScreen from '../features/profile/screens/SettingsScreen';
+import EditProfileScreen from '../features/profile/screens/EditProfileScreen';
+import ChangePasswordScreen from '../features/profile/screens/ChangePasswordScreen';
+import ChangeEmailScreen from '../features/profile/screens/ChangeEmailScreen';
+import NotificationPreferencesScreen from '../features/profile/screens/NotificationPreferencesScreen';
 
 /* =========================================================
    SHARED
@@ -282,6 +288,7 @@ const linking = {
   config: {
     screens: {
       VerifyEmail: 'auth/verify-email',
+      ResetPassword: 'auth/reset-password',
     },
   },
 };
@@ -373,6 +380,11 @@ export function RootNavigator() {
         />
 
         <Stack.Screen
+          name="ResetPassword"
+          component={ResetPasswordScreen}
+        />
+
+        <Stack.Screen
           name="Terms"
           component={TermsScreen}
         />
@@ -394,6 +406,35 @@ export function RootNavigator() {
       <Stack.Screen
         name="VerifyIdentity"
         component={VerifyIdentityScreen}
+        />
+
+        {/* =================================================
+            SETTINGS (Profile > Settings)
+        ================================================= */}
+
+        <Stack.Screen
+          name="Settings"
+          component={SettingsScreen}
+        />
+
+        <Stack.Screen
+          name="EditProfile"
+          component={EditProfileScreen}
+        />
+
+        <Stack.Screen
+          name="ChangePassword"
+          component={ChangePasswordScreen}
+        />
+
+        <Stack.Screen
+          name="ChangeEmail"
+          component={ChangeEmailScreen}
+        />
+
+        <Stack.Screen
+          name="NotificationPreferences"
+          component={NotificationPreferencesScreen}
         />
 
         {/* =================================================

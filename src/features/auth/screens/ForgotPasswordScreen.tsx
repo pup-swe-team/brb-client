@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Pressable,
   StyleSheet,
@@ -13,6 +14,8 @@ import {
 } from '../../../shared/components';
 
 import { colors } from '../../../theme';
+import { extractApiError } from '../services/authService';
+import { requestPasswordReset } from '../services/passwordResetService';
 
 export default function ForgotPasswordScreen({
   navigation,
@@ -21,18 +24,30 @@ export default function ForgotPasswordScreen({
     useState('');
 
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSendEmail = () => {
+  const handleSendEmail = async () => {
+    if (loading) return;
     setError('');
 
-    if (!emailOrUsername.trim()) {
+    const value = emailOrUsername.trim();
+
+    if (!value) {
       setError(
         'Please enter your PUP Webmail or Username.'
       );
       return;
     }
 
-    navigation.navigate('PasswordResetSent');
+    setLoading(true);
+    try {
+      await requestPasswordReset(value);
+      navigation.navigate('PasswordResetSent');
+    } catch (err) {
+      setError(extractApiError(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -70,7 +85,7 @@ export default function ForgotPasswordScreen({
         <Text style={styles.description}>
           Enter your PUP Webmail that you used to
           {'\n'}
-          register. We'll send you a link to reset your
+          register. We&apos;ll send you a link to reset your
           {'\n'}
           password.
         </Text>
@@ -97,11 +112,20 @@ export default function ForgotPasswordScreen({
         {/* SEND EMAIL */}
         <Pressable
           onPress={handleSendEmail}
-          style={styles.sendButton}
+          disabled={loading}
+          accessibilityRole="button"
+          style={[
+            styles.sendButton,
+            loading && styles.sendButtonDisabled,
+          ]}
         >
-          <Text style={styles.sendButtonText}>
-            Send Email
-          </Text>
+          {loading ? (
+            <ActivityIndicator color={colors.white} />
+          ) : (
+            <Text style={styles.sendButtonText}>
+              Send Email
+            </Text>
+          )}
         </Pressable>
 
       </View>
@@ -201,6 +225,10 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  sendButtonDisabled: {
+    opacity: 0.5,
   },
 
   sendButtonText: {

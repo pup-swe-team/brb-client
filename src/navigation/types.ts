@@ -18,6 +18,12 @@ export type RootStackParamList = {
 
   ForgotPassword: undefined;
   PasswordResetSent: undefined;
+  ResetPassword:
+    | {
+        uid?: string;
+        token?: string;
+      }
+    | undefined;
 
   Terms: undefined;
   Privacy: undefined;
@@ -25,6 +31,12 @@ export type RootStackParamList = {
   AccountSuspended: undefined;
 
   Tabs: undefined;
+
+  Settings: undefined;
+  EditProfile: undefined;
+  ChangePassword: undefined;
+  ChangeEmail: undefined;
+  NotificationPreferences: undefined;
 
   Gallery: undefined;
 };

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -18,6 +18,7 @@ import {
 } from '../../../shared/hooks/useVerificationGate';
 import { getCurrentUser } from '../../auth/services/authService';
 import type { AuthUser } from '../../auth/services/authService';
+import { MyListingsSection } from '../../listings/components/MyListingsSection';
 import {
   getLatestIdentityDocumentStatus,
   type IdentityDocumentStatus,
@@ -196,19 +197,23 @@ export default function ProfileScreen({ navigation }: any) {
   // the caller's own name and affiliation from the backend.
   const [user, setUser] = useState<AuthUser | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    getCurrentUser()
-      .then((account) => {
-        if (active) setUser(account);
-      })
-      .catch(() => {
-        if (active) setUser(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  // Refetched on focus so edits made in Settings > Edit Profile show up
+  // as soon as the user comes back to this tab.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getCurrentUser()
+        .then((account) => {
+          if (active) setUser(account);
+        })
+        .catch(() => {
+          if (active) setUser(null);
+        });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   const displayName = user?.full_name ?? '';
   const initials =
@@ -287,6 +292,19 @@ export default function ProfileScreen({ navigation }: any) {
           <Text style={styles.headerTitle}>
             My Profile
           </Text>
+
+          <Pressable
+            onPress={() => navigation.navigate('Settings')}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            hitSlop={spacing.sm}
+          >
+            <Ionicons
+              name="settings-outline"
+              size={20}
+              color={colors.white}
+            />
+          </Pressable>
         </View>
 
         <ScrollView
@@ -474,6 +492,11 @@ export default function ProfileScreen({ navigation }: any) {
             </View>
           )}
 
+          {/* MY LISTINGS (lender): edit / deactivate / delete controls */}
+          {role === 'Lender' && (
+            <MyListingsSection navigation={navigation} />
+          )}
+
           {/* BORROWING PROGRESS */}
           <View style={styles.progressCard}>
             <View style={styles.progressHeader}>
@@ -616,7 +639,9 @@ const styles = StyleSheet.create({
   header: {
     width: '100%',
     backgroundColor: colors.primary,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
   },
