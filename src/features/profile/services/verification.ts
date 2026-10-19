@@ -64,5 +64,12 @@ export async function getLatestIdentityDocumentStatus(): Promise<
   }>('/identity/documents/list/');
 
   // The backend orders by `-submitted_at`, so the newest submission is first.
-  return data.results[0]?.status;
+  // Approval is decided per row, but the server's login/listing gate
+  // (User.has_verified_identity) is satisfied by ANY approved row — so an
+  // older approved submission has to win over a newer pending/rejected one,
+  // otherwise the profile shows "Under review" on an account the API already
+  // treats as verified.
+  const statuses = data.results.map((result) => result.status);
+  if (statuses.includes('approved')) return 'approved';
+  return statuses[0];
 }

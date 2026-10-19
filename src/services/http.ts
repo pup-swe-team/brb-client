@@ -1,4 +1,4 @@
-import { create, isAxiosError } from 'axios';
+import { create, isAxiosError, type InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
@@ -70,6 +70,65 @@ http.interceptors.request.use(async (cfg) => {
   }
   return cfg;
 });
+
+type RetriableConfig = InternalAxiosRequestConfig & { _retry?: boolean };
+
+// Public endpoints and logout never ride a refresh-and-retry: their 401 means
+// bad credentials or a dead session, not an expired access token, and retrying
+// a logout would redeem a rotation token for nothing.
+const NO_REFRESH_ENDPOINTS = [...PUBLIC_ENDPOINTS, '/auth/logout/'];
+
+// Refresh tokens rotate on every use (ROTATE_REFRESH_TOKENS +
+// BLACKLIST_AFTER_ROTATION), so the same single-use token cannot be redeemed
+// twice: concurrent 401s must share one in-flight refresh instead of racing.
+let refreshInFlight: Promise<string> | null = null;
+
+async function refreshAccess(): Promise<string> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      const refresh = await readItem(REFRESH_TOKEN_KEY);
+      if (!refresh) throw new Error('No refresh token stored.');
+      const { data } = await http.post<{ access: string; refresh: string }>(
+        '/auth/token/refresh/',
+        { refresh },
+      );
+      await setAuthTokens(data.access, data.refresh);
+      return data.access;
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+// Access tokens live 15 minutes; without this, any call made after that
+// failed with a silent 401 while callers kept their old state — e.g. the
+// profile badge never turning "Verified" after an admin approved the ID in
+// /portal/ because the status refetch (which `.catch(() => {})`) was rejected.
+http.interceptors.response.use(
+  (response) => response,
+  async (error: unknown) => {
+    if (!isAxiosError(error) || !error.config) return Promise.reject(error);
+
+    const config = error.config as RetriableConfig;
+    const exempt = NO_REFRESH_ENDPOINTS.some((p) => config.url?.includes(p));
+    if (error.response?.status !== 401 || exempt || config._retry) {
+      return Promise.reject(error);
+    }
+
+    config._retry = true;
+    let access: string;
+    try {
+      access = await refreshAccess();
+    } catch {
+      // Refresh refused (expired/revoked): surface the original 401 as-is.
+      return Promise.reject(error);
+    }
+
+    config.headers.Authorization = `Bearer ${access}`;
+    return http(config);
+  },
+);
 
 export async function getAccessToken(): Promise<string | null> {
   return readItem(TOKEN_KEY);

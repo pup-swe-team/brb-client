@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -222,27 +223,33 @@ export default function ProfileScreen({ navigation }: any) {
   // Real submission status from GET /identity/documents/list/ — the review
   // loop: submit → admin approves/rejects → the status below reflects it.
   // Refetched on focus so a submission made on VerifyIdentityScreen shows up
-  // as "Under review" right after returning to this tab.
+  // as "Under review" right after returning to this tab, and on foreground:
+  // useFocusEffect does not fire when the app comes back from the background,
+  // so checking /portal/ in a browser and returning used to leave the badge
+  // stale until the tab happened to be re-focused.
   const [verificationStatus, setVerificationStatus] =
     useState<VerificationStatus>('Unverified');
 
+  const refreshVerificationStatus = useCallback(() => {
+    getLatestIdentityDocumentStatus()
+      .then((status) => setVerificationStatus(toVerificationStatus(status)))
+      .catch(() => {
+        // Non-fatal: keep the current value and refetch on the next trigger.
+      });
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      let active = true;
-      getLatestIdentityDocumentStatus()
-        .then((status) => {
-          if (active) {
-            setVerificationStatus(toVerificationStatus(status));
-          }
-        })
-        .catch(() => {
-          // Non-fatal: keep the current value and refetch on the next focus.
-        });
-      return () => {
-        active = false;
-      };
-    }, []),
+      refreshVerificationStatus();
+    }, [refreshVerificationStatus]),
   );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshVerificationStatus();
+    });
+    return () => subscription.remove();
+  }, [refreshVerificationStatus]);
 
   const { guard, gateModal } = useVerificationGate(verificationStatus);
   const isVerified = verificationStatus === 'Verified';
