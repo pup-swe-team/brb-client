@@ -284,9 +284,20 @@ export default function ProfileScreen({ navigation }: any) {
             { paddingTop: insets.top + spacing.md },
           ]}
         >
+          <View style={styles.headerSpacer} />
           <Text style={styles.headerTitle}>
             My Profile
           </Text>
+          <Pressable
+            style={styles.headerAction}
+            accessibilityLabel="Profile settings"
+          >
+            <Ionicons
+              name="settings-outline"
+              size={20}
+              color={colors.white}
+            />
+          </Pressable>
         </View>
 
         <ScrollView
@@ -616,14 +627,31 @@ const styles = StyleSheet.create({
   header: {
     width: '100%',
     backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
   },
 
+  headerSpacer: {
+    width: 32,
+  },
+
+  headerAction: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   headerTitle: {
+    flex: 1,
+    textAlign: 'center',
     color: colors.white,
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: '700',
   },
 

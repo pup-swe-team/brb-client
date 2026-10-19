@@ -231,7 +231,7 @@ function MainTabs() {
       <Tab.Screen
         name="AddItem"
         component={AddItemScreen}
-        options={{ title: '' }}
+        options={{ title: 'Add Item' }}
       />
 
       {/* =================================================

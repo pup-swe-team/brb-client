@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { colors, spacing } from '../../../theme';
 
 const RED = '#B2080C';
 const TEXT = '#35415F';
@@ -18,6 +21,7 @@ const LOCATIONS = ['PUP Main Gate', 'PUP CEA Building', 'PUP Lagoon', 'PUP Libra
 const CONDITIONS = ['Like New', 'Good', 'Fair', 'Poor'];
 
 export default function AddItemScreen() {
+  const insets = useSafeAreaInsets();
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
@@ -83,8 +87,12 @@ export default function AddItemScreen() {
   const chip = (label: string, selected: boolean, onPress: () => void, wide = false) => <Pressable key={label} onPress={onPress} style={[s.chip, wide && s.wideChip, selected && s.chipSelected]}><Text style={[s.chipText, selected && s.chipTextSelected]}>{label}</Text></Pressable>;
 
   return <View style={s.screen}>
-    <StatusBar backgroundColor={RED} barStyle="light-content" />
-    <View style={s.header} />
+    <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
+    <View style={[s.header, { paddingTop: insets.top + spacing.md }]}>
+      <View style={s.headerSpacer} />
+      <Text style={s.headerTitle}>Add Item</Text>
+      <View style={s.headerActionSpacer} />
+    </View>
     <ScrollView style={s.scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       {showErrors && Object.values(errors).some(v => Array.isArray(v) ? v.length > 0 : !!v) && <View style={s.banner}><Ionicons name="warning-outline" size={18} color={ERROR}/><Text style={s.bannerText}><Text style={s.bannerStrong}>Fix the highlighted fields</Text> before posting your item.</Text></View>}
 
@@ -206,7 +214,19 @@ export default function AddItemScreen() {
 }
 
 const s = StyleSheet.create({
-  screen:{flex:1,backgroundColor:BG},header:{height:62,backgroundColor:RED},scroll:{flex:1},content:{paddingHorizontal:20,paddingTop:16,paddingBottom:30},
+  screen:{flex:1,backgroundColor:BG},
+  header:{
+    backgroundColor: colors.primary,
+    flexDirection:'row',
+    alignItems:'center',
+    justifyContent:'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  headerSpacer:{width:32},
+  headerActionSpacer:{width:32},
+  headerTitle:{flex:1, textAlign:'center', color: colors.white, fontSize: 18, fontWeight:'700'},
+  scroll:{flex:1},content:{paddingHorizontal:20,paddingTop:16,paddingBottom:30},
   banner:{flexDirection:'row',alignItems:'center',gap:8,padding:12,borderWidth:1,borderColor:ERROR,borderRadius:11,backgroundColor:'#FFF5F6',marginBottom:14},bannerText:{flex:1,color:'#9E3B49',fontSize:12},bannerStrong:{fontWeight:'800'},label:{color:TEXT,fontSize:12,fontWeight:'700',marginTop:15,marginBottom:8},smallLabel:{color:TEXT,fontSize:12,fontWeight:'700',marginBottom:7},required:{color:ERROR},
   photoRow:{flexDirection:'row',alignItems:'flex-start',gap:8,flexWrap:'wrap'},photoTile:{width:72,height:76,borderRadius:9,borderWidth:1,borderColor:BORDER,backgroundColor:WHITE,alignItems:'center',justifyContent:'center',overflow:'hidden'},photoImage:{width:'100%',height:'100%'},photoName:{position:'absolute',bottom:2,left:2,right:2,textAlign:'center',fontSize:8,color:WHITE,backgroundColor:'rgba(0,0,0,0.5)'},removePhoto:{position:'absolute',right:1,top:1,backgroundColor:WHITE,borderRadius:12},addTile:{borderStyle:'dashed'},photoCaption:{color:MUTED,fontSize:10,marginTop:3},helper:{color:MUTED,fontSize:10.5,marginTop:7,lineHeight:15},errorRow:{flexDirection:'row',alignItems:'center',gap:5,marginTop:4},errorText:{flex:1,color:ERROR,fontSize:10.5,lineHeight:15},
   categoryDropdownWrap:{position:'relative',zIndex:10},categoryMenu:{position:'absolute',top:49,left:0,right:0,backgroundColor:WHITE,borderWidth:1,borderColor:BORDER,borderRadius:8,elevation:8,shadowColor:'#000',shadowOpacity:0.12,shadowRadius:8,shadowOffset:{width:0,height:4},zIndex:20,overflow:'hidden'},categoryMenuOption:{minHeight:43,paddingHorizontal:13,flexDirection:'row',alignItems:'center',justifyContent:'space-between',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#EDF0F5'},categoryMenuOptionSelected:{backgroundColor:'#FFF5F5'},categoryMenuText:{color:TEXT,fontSize:13},categoryMenuTextSelected:{color:RED,fontWeight:'700'},input:{minHeight:47,borderRadius:8,borderWidth:1,borderColor:BORDER,backgroundColor:WHITE,paddingHorizontal:13,paddingVertical:11,color:TEXT,fontSize:13},inputError:{borderColor:ERROR,borderWidth:1.3},select:{minHeight:47,borderRadius:8,borderWidth:1,borderColor:BORDER,backgroundColor:WHITE,paddingHorizontal:13,flexDirection:'row',alignItems:'center',gap:8},selectText:{flex:1,color:TEXT,fontSize:13},placeholder:{color:'#A5AFC1'},chipsWrap:{flexDirection:'row',flexWrap:'wrap',gap:7,marginTop:8},chip:{borderWidth:1,borderColor:BORDER,borderRadius:18,backgroundColor:WHITE,paddingHorizontal:12,paddingVertical:8},wideChip:{},chipSelected:{backgroundColor:RED,borderColor:RED},chipText:{color:TEXT,fontSize:11},chipTextSelected:{color:WHITE,fontWeight:'600'},description:{minHeight:80,maxHeight:130,textAlignVertical:'top'},counter:{color:MUTED,fontSize:10.5,marginTop:5},chipRow:{flexDirection:'row',flexWrap:'wrap',gap:7},segmentRow:{flexDirection:'row',gap:8},segment:{flex:1,minHeight:38,borderWidth:1,borderColor:BORDER,borderRadius:22,backgroundColor:WHITE,justifyContent:'center',alignItems:'center',paddingHorizontal:7},segmentSelected:{backgroundColor:RED,borderColor:RED},segmentText:{color:TEXT,fontSize:11.5,fontWeight:'500'},segmentTextSelected:{color:WHITE},

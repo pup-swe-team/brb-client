@@ -44,6 +44,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
   );
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [requestVisible, setRequestVisible] = useState(false);
+  const [verifyPromptVisible, setVerifyPromptVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('');
   const [message, setMessage] = useState('');
@@ -67,25 +68,8 @@ export default function ItemDetailScreen({ navigation, route }: any) {
   };
 
   const openRequest = () => {
-    if (!checkout || !returnDate) {
-      Alert.alert(
-        isFree ? 'Select borrowing dates' : 'Select rental dates',
-        isFree
-          ? 'Please select your borrow and return dates first.'
-          : 'Please select your check-out and return dates first.',
-      );
-      return;
-    }
-
-    if (returnDate < checkout) {
-      Alert.alert(
-        'Invalid dates',
-        'The return date must be on or after the check-out date.',
-      );
-      return;
-    }
-
-    setRequestVisible(true);
+    // Require identity verification before allowing a borrow/rent request.
+    setVerifyPromptVisible(true);
   };
 
   const confirmRequest = () => {
@@ -300,6 +284,55 @@ export default function ItemDetailScreen({ navigation, route }: any) {
           </Text>
         </Pressable>
       </View>
+
+      <Modal
+        visible={verifyPromptVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setVerifyPromptVisible(false)}
+      >
+        <View style={styles.confirmBackdrop}>
+          <BlurView
+            intensity={32}
+            tint="dark"
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.confirmModal}>
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={38}
+                color={colors.primary}
+              />
+            </View>
+
+            <Text style={styles.confirmTitle}>Verify your identity first</Text>
+            <Text style={styles.confirmMessage}>
+              You need a verified account to request items. It only takes a few
+              minutes.
+            </Text>
+
+            <View style={styles.confirmActions}>
+              <Pressable
+                style={styles.confirmCancel}
+                onPress={() => setVerifyPromptVisible(false)}
+              >
+                <Text style={styles.confirmCancelText}>Not Now</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.confirmButton}
+                onPress={() => {
+                  setVerifyPromptVisible(false);
+                  navigation.navigate('VerifyIdentity');
+                }}
+              >
+                <Text style={styles.confirmButtonText}>Verify Now</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <CalendarPicker
         visible={calendarVisible}

@@ -13,8 +13,9 @@ import {
 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors } from '../../../theme';
+import { colors, spacing } from '../../../theme';
 import { VerifiedLabel, AffiliationType } from '../../../shared/components';
 
 
@@ -98,6 +99,7 @@ const items: Item[] = [
 export default function SearchScreen({
   navigation,
 }: any) {
+  const insets = useSafeAreaInsets();
 
   const [search, setSearch] = useState('');
 
@@ -163,12 +165,10 @@ export default function SearchScreen({
           HEADER
       =================================================== */}
 
-      <View style={styles.header}>
-
-        <Text style={styles.headerTitle}>
-          Search Results (Resource Listing)
-        </Text>
-
+      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+        <View style={styles.headerSpacer} />
+        <Text style={styles.headerTitle}>Search</Text>
+        <View style={styles.headerActionSpacer} />
       </View>
 
 
@@ -1058,17 +1058,28 @@ const styles = StyleSheet.create({
 
   header: {
     width: '100%',
-    height: 103,
     backgroundColor: colors.primary,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingBottom: 13,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+
+  headerSpacer: {
+    width: 32,
+  },
+
+  headerActionSpacer: {
+    width: 32,
   },
 
   headerTitle: {
+    flex: 1,
+    textAlign: 'center',
     color: colors.white,
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 18,
+    fontWeight: '700',
   },
 
 
