@@ -1,5 +1,23 @@
+
 export type RootStackParamList = {
   Landing: undefined;
+  ListingDetail: undefined;
+  ItemDetail: {
+    item: {
+      title?: string;
+      author?: string;
+      price?: string;
+      image?: string;
+      category?: string;
+      details?: string[];
+      lenderName?: string;
+      affiliation?: string;
+      lenderYear?: string;
+      lenderRating?: string;
+      [key: string]: any;
+    };
+  };
+
   Login: undefined;
   Register: undefined;
   VerifyIdentity: undefined;
@@ -36,6 +54,7 @@ export type TabParamList = {
   Chat: undefined;
   Profile: undefined;
 };
+
 export interface PublicUser {
   id: string;
   fullName: string;

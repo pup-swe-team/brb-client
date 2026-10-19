@@ -33,6 +33,9 @@ import ForgotPasswordScreen from '../features/auth/screens/ForgotPasswordScreen'
 import PasswordResetSentScreen from '../features/auth/screens/PasswordResetSentScreen';
 import TermsScreen from '../features/auth/screens/TermsScreen';
 import PrivacyScreen from '../features/auth/screens/PrivacyScreen';
+import ItemDetailScreen from '../features/listings/screens/ItemDetailScreen';
+import AddItemScreen from '../features/listings/screens/AddItemScreen';
+
 
 /* =========================================================
    DASHBOARD
@@ -223,11 +226,11 @@ function MainTabs() {
 
       {/* =================================================
           ADD ITEM
-          TEMPORARY UNTIL ADD ITEM SCREEN IS READY
       ================================================= */}
 
       <Tab.Screen
         name="AddItem"
+<<<<<<< HEAD
         options={{
           title: 'Add Item',
         }}
@@ -238,6 +241,11 @@ function MainTabs() {
           />
         )}
       </Tab.Screen>
+=======
+        component={AddItemScreen}
+        options={{ title: 'Add Item' }}
+      />
+>>>>>>> 718b796 (feat: update item detail and add item screens)
 
       {/* =================================================
           CHAT
@@ -390,7 +398,10 @@ export function RootNavigator() {
           name="Tabs"
           component={MainTabs}
         />
-
+        <Stack.Screen
+          name="ItemDetail"
+          component={ItemDetailScreen}
+        />
       <Stack.Screen
         name="VerifyIdentity"
         component={VerifyIdentityScreen}

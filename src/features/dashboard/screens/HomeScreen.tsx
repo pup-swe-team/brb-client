@@ -266,6 +266,19 @@ export default function HomeScreen({ navigation }: any) {
               <Pressable
                 key={item.id}
                 style={styles.card}
+                onPress={() =>
+                  navigation.navigate('ItemDetail', {
+                    item: {
+                      ...item,
+                      author: item.owner,
+                      lenderName: item.owner,
+                      image: item.image,
+                      price: item.price,
+                      title: item.title,
+                      category: 'General',
+                    },
+                  })
+                }
               >
 
                 {/* IMAGE */}
