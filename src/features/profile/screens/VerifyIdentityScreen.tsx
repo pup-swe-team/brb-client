@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { isAxiosError } from 'axios';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { colors, radius, spacing } from '../../../theme';
 import { Button, Input, ScreenContainer } from '../../../shared/components';
 import { Checkbox } from '../../../shared/components/Checkbox';
@@ -30,20 +32,24 @@ function Shell({
   onBack: () => void;
   children: React.ReactNode;
 }) {
+  const insets = useSafeAreaInsets();
+
   return (
-    <ScreenContainer>
+    <ScreenContainer edges={['bottom']} padded={false} keyboardAware>
       <View style={s.screen}>
-        <View style={s.header}>
-          <Pressable
-            onPress={onBack}
-            hitSlop={12}
-            style={s.backBtn}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="arrow-back" size={20} color={colors.white} />
-          </Pressable>
-          <Text style={s.headerTitle}>{title}</Text>
+        <View style={[s.header, { paddingTop: insets.top }]}>
+          <View style={s.headerBar}>
+            <Pressable
+              onPress={onBack}
+              hitSlop={12}
+              style={s.backBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="arrow-back" size={20} color={colors.white} />
+            </Pressable>
+            <Text style={s.headerTitle}>{title}</Text>
+          </View>
         </View>
         {children}
       </View>
@@ -166,7 +172,11 @@ export default function VerifyIdentityScreen({ navigation }: any) {
 
   return (
     <Shell title="Verify Identity" onBack={() => navigation.goBack()}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={s.content}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* PRIVACY NOTE */}
         <View style={s.noteCard}>
           <View style={s.noteIcon}>
@@ -269,20 +279,17 @@ export default function VerifyIdentityScreen({ navigation }: any) {
 }
 
 const s = StyleSheet.create({
-  // Same full-bleed trick as ProfileScreen so the header spans the screen.
   screen: {
     flex: 1,
-    width: '110%',
     backgroundColor: colors.bg,
-    marginLeft: -spacing.lg,
-    marginRight: -spacing.lg,
-    padding: 0,
   },
 
   header: {
     width: '100%',
-    height: 52,
     backgroundColor: colors.primary,
+  },
+  headerBar: {
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
