@@ -230,22 +230,9 @@ function MainTabs() {
 
       <Tab.Screen
         name="AddItem"
-<<<<<<< HEAD
-        options={{
-          title: 'Add Item',
-        }}
-      >
-        {() => (
-          <StubScreen
-            label="Add Item"
-          />
-        )}
-      </Tab.Screen>
-=======
         component={AddItemScreen}
-        options={{ title: 'Add Item' }}
+        options={{ title: '' }}
       />
->>>>>>> 718b796 (feat: update item detail and add item screens)
 
       {/* =================================================
           CHAT
