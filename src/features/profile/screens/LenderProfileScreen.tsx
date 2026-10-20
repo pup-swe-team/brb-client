@@ -67,21 +67,31 @@ export default function LenderProfileScreen({ navigation, route }: any) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setLender(await getLenderProfile(lenderId));
-    } catch {
-      setError('Could not load this lender profile.');
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    let active = true;
+    getLenderProfile(lenderId)
+      .then((data) => {
+        if (active) setLender(data);
+      })
+      .catch(() => {
+        if (active) setError('Could not load this lender profile.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [lenderId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const handleRetry = () => {
+    setLoading(true);
+    setError(null);
+    getLenderProfile(lenderId)
+      .then((data) => setLender(data))
+      .catch(() => setError('Could not load this lender profile.'))
+      .finally(() => setLoading(false));
+  };
 
   if (loading) {
     return (
@@ -98,7 +108,7 @@ export default function LenderProfileScreen({ navigation, route }: any) {
       <Shell onBack={goBack}>
         <View style={s.errorWrap}>
           <Text style={s.errorText}>{error ?? 'Lender not found.'}</Text>
-          <Button title="Try again" variant="secondary" onPress={load} />
+          <Button title="Try again" variant="secondary" onPress={handleRetry} />
         </View>
       </Shell>
     );
@@ -169,7 +179,24 @@ export default function LenderProfileScreen({ navigation, route }: any) {
             <EmptyBlock text="No active listings right now." />
           ) : (
             lender.listings.map((l) => (
-              <LenderListingCard key={l.id} listing={l} /* TODO: open listing details */ />
+              <LenderListingCard
+                key={l.id}
+                listing={l}
+                onPress={() =>
+                  navigation?.navigate?.('ItemDetail', {
+                    item: {
+                      id: l.id,
+                      title: l.title,
+                      category: l.category,
+                      location: l.location,
+                      lenderName: lender.fullName,
+                      author: lender.fullName,
+                      rating: String(lender.rating),
+                      price: 'FREE',
+                    },
+                  })
+                }
+              />
             ))
           )}
         </View>
