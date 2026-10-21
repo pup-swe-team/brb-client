@@ -94,6 +94,14 @@ export async function getCurrentUser(): Promise<AuthUser> {
   return data;
 }
 
+export async function applyForLenderRole(): Promise<AuthUser> {
+  if (USE_MOCK) {
+    return { ...MOCK_USER, lender_status: 'active' };
+  }
+  const { data } = await http.post<{ message: string; user: AuthUser }>('/auth/apply-lender/', {});
+  return data.user;
+}
+
 export async function resendVerificationEmail(email: string): Promise<string> {
   if (USE_MOCK) return 'We sent a new verification link to your email.';
   const { data } = await http.post<{ message: string }>('/auth/resend-verification/', { email });

@@ -44,6 +44,9 @@ Auth tokens are stored via `expo-secure-store` (`src/services/http.ts`):
 | GET | `/auth/me/` | — (auth) | current `user` (profile card data) |
 | POST | `/auth/token/refresh/` | `refresh` | `{ access }` |
 | POST | `/auth/logout/` | `refresh` | 204 (blacklists token) |
+| POST | `/auth/password-reset/` | `email` | generic `{ message }` (never says whether the address exists) |
+| POST | `/auth/password-reset/validate/` | `uid, token` | `{ valid: true }`; dead link → **400** `{ detail }` |
+| POST | `/auth/password-reset/confirm/` | `uid, token, password, password_confirm` | `{ message }` |
 
 **Constraints to honor on every screen wiring:**
 - Registration **does not** accept extra fields (no `home_address`, no
@@ -58,6 +61,12 @@ Auth tokens are stored via `expo-secure-store` (`src/services/http.ts`):
   `invalid_credentials`, `locked_out`, `suspended`, `banned`, `inactive`,
   `unverified_email`. `extractApiError` (in `http.ts`) turns these into the
   human-readable `detail`.
+- **Reset links are single-use and time-limited.** The token hash covers the
+  password hash, so a link stops working the moment the password changes.
+  `NewPasswordScreen` therefore calls `/auth/password-reset/validate/` on mount
+  and refuses to show the form for a link that is forged, expired, or already
+  spent — otherwise a reused link would still reach the "new password" screen
+  and only fail on submit.
 
 ### IDENTITY — `apps/users` (`src/features/profile/services/verification.ts`)
 
@@ -164,8 +173,15 @@ lender**; the window needs `start >= today` and `end >= start`.
 | POST | `/auth/password-change/` | `current_password, new_password, new_password_confirm` | wrong current → **401** (D-12); success blacklists refresh tokens |
 | POST | `/auth/email-change/` | `new_email` **only** (no password) | the swap happens only after the mailed link is confirmed |
 | POST | `/auth/deactivate/` | — | blockers → **400** `{ detail, open_orders, open_unreturned_cases }` (counts); success → 200, `is_active=False` |
+| POST | `/auth/apply-lender/` | — | CP-1003: grants `lender_status='active'`; refusal → **400** `{ detail }` |
 
 - **Path is `/auth/password-change/`, not `change-password/`.**
+- **`/auth/apply-lender/` (CP-1003) is server-authoritative.** The role lives in
+  `lender_status` on the account, so the client reads it from `GET /auth/me/`
+  and never toggles it locally. Preconditions enforced server-side: the account
+  must be **active** (email verification flips `account_status` from
+  `pending_review` to `active`), the identity document must be **approved**,
+  and the account must not already be a lender or be **revoked**.
 - **There is no `/auth/notification-preferences/`** (CP-802, Sprint 5) and **no
   `/change-email/resend/`**; both throw a documented "not available yet" in real
   mode (mock branches intact).

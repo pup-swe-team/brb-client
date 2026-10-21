@@ -13,7 +13,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing } from '../../../theme';
 import { ScreenContainer, AffiliationBadge } from '../../../shared/components';
 import { useVerificationGate } from '../../../shared/hooks/useVerificationGate';
-import { getCurrentUser } from '../../auth/services/authService';
+import {
+  applyForLenderRole,
+  extractApiError,
+  getCurrentUser,
+} from '../../auth/services/authService';
 import type { AuthUser } from '../../auth/services/authService';
 import { useVerificationStatus } from '../hooks/useVerificationStatus';
 
@@ -166,14 +170,22 @@ function BorrowedItemCard({
 
 export default function ProfileScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
-  const [role, setRole] = useState<'Borrower' | 'Lender'>(
-    'Borrower',
-  );
 
   // Real account details from GET /auth/me/ (BE-BUG-0002). The profile card
   // used to hardcode a placeholder synonym (always "Student"); now it renders
   // the caller's own name and affiliation from the backend.
   const [user, setUser] = useState<AuthUser | null>(null);
+
+  // Which half of the profile is on screen. The role is a server-side fact
+  // (`lender_status`), so it is read from the account rather than toggled
+  // locally -- a Borrower must not be able to flip into the Lender view just
+  // by tapping a segment. `isLender` is the authority; the segment only
+  // chooses which view to show.
+  const [lenderView, setLenderView] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState('');
+
+  const isLender = user?.lender_status === 'active';
 
   // Refetched on focus so edits made in Edit Profile show up when returning.
   useFocusEffect(
@@ -191,6 +203,21 @@ export default function ProfileScreen({ navigation }: any) {
       };
     }, []),
   );
+
+  const applyLender = useCallback(async () => {
+    if (applying) return;
+    setApplying(true);
+    setApplyError('');
+    try {
+      const updated = await applyForLenderRole();
+      setUser(updated);
+      setLenderView(true);
+    } catch (err) {
+      setApplyError(extractApiError(err));
+    } finally {
+      setApplying(false);
+    }
+  }, [applying]);
 
   const displayName = user?.full_name ?? '';
   const initials =
@@ -339,15 +366,15 @@ export default function ProfileScreen({ navigation }: any) {
             <Pressable
               style={[
                 styles.roleButton,
-                role === 'Borrower' &&
+                !lenderView &&
                   styles.roleButtonActive,
               ]}
-              onPress={() => setRole('Borrower')}
+              onPress={() => setLenderView(false)}
             >
               <Text
                 style={[
                   styles.roleText,
-                  role === 'Borrower' &&
+                  !lenderView &&
                     styles.roleTextActive,
                 ]}
               >
@@ -358,15 +385,15 @@ export default function ProfileScreen({ navigation }: any) {
             <Pressable
               style={[
                 styles.roleButton,
-                role === 'Lender' &&
+                lenderView &&
                   styles.roleButtonActive,
               ]}
-              onPress={() => setRole('Lender')}
+              onPress={() => setLenderView(true)}
             >
               <Text
                 style={[
                   styles.roleText,
-                  role === 'Lender' &&
+                  lenderView &&
                     styles.roleTextActive,
                 ]}
               >
@@ -412,7 +439,7 @@ export default function ProfileScreen({ navigation }: any) {
           )}
 
           {/* BECOME A LENDER */}
-          {role === 'Borrower' && (
+          {!isLender && (
             <View style={styles.lenderCard}>
               <View style={styles.lenderIcon}>
                 <Ionicons
@@ -433,23 +460,31 @@ export default function ProfileScreen({ navigation }: any) {
                 </Text>
               </View>
 
+              {applyError ? (
+                <Text style={styles.applyError}>{applyError}</Text>
+              ) : null}
+
               <Pressable
-                style={styles.applyButton}
+                style={[
+                  styles.applyButton,
+                  applying && styles.applyButtonDisabled,
+                ]}
+                disabled={applying}
                 onPress={() =>
                   guard(() => {
-                    // TODO: open the lender application once that flow exists.
+                    void applyLender();
                   })
                 }
               >
                 <Text style={styles.applyText}>
-                  Apply Now
+                  {applying ? 'Applying...' : 'Apply Now'}
                 </Text>
               </Pressable>
             </View>
           )}
 
           {/* MY LISTINGS */}
-          {role === 'Lender' && (
+          {isLender && (
             <View style={styles.lenderCard}>
               <View style={styles.lenderIcon}>
                 <Ionicons
@@ -818,6 +853,17 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 9,
     fontWeight: '700',
+  },
+
+  applyButtonDisabled: {
+    opacity: 0.6,
+  },
+
+  applyError: {
+    color: colors.error,
+    fontSize: 11,
+    lineHeight: 15,
+    marginBottom: spacing.xs,
   },
 
   /* PROGRESS */

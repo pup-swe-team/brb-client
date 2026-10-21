@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Input, ScreenContainer } from '../../../shared/components';
 import { colors, spacing } from '../../../theme';
 import { confirmPasswordReset, extractApiError } from '../services/authService';
+import { http } from '../../../services/http';
 
 type Errors = { password?: string; confirm?: string; submit?: string };
 
@@ -24,6 +25,39 @@ export default function NewPasswordScreen({ navigation, route }: any) {
   const [errors, setErrors] = useState<Errors>({});
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [validating, setValidating] = useState(true);
+  const [linkValid, setLinkValid] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const validate = async () => {
+      if (!uid || !token) {
+        if (!cancelled) {
+          setValidating(false);
+          setLinkValid(false);
+        }
+        return;
+      }
+      try {
+        await http.post('/auth/password-reset/validate/', { uid, token });
+        if (!cancelled) {
+          setLinkValid(true);
+        }
+      } catch {
+        if (!cancelled) {
+          setLinkValid(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setValidating(false);
+        }
+      }
+    };
+    validate();
+    return () => {
+      cancelled = true;
+    };
+  }, [uid, token]);
 
   const submit = async () => {
     if (!uid || !token || loading) return;
@@ -44,7 +78,7 @@ export default function NewPasswordScreen({ navigation, route }: any) {
     }
   };
 
-  const invalid = !uid || !token;
+  const invalid = validating ? false : !linkValid;
 
   return (
     <ScreenContainer auth scroll keyboardAware>
@@ -60,11 +94,16 @@ export default function NewPasswordScreen({ navigation, route }: any) {
             <Text style={s.desc}>You can now log in with your new password.</Text>
             <Button title="Back to Login" onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })} />
           </View>
+        ) : validating ? (
+          <View style={s.center}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={s.desc}>Checking reset link...</Text>
+          </View>
         ) : invalid ? (
           <View style={s.center}>
             <Ionicons name="alert-circle-outline" size={64} color={colors.error} />
             <Text style={s.title}>Reset link is invalid</Text>
-            <Text style={s.desc}>This link is missing information or has expired. Request a new one.</Text>
+            <Text style={s.desc}>This link is invalid, has expired, or has already been used. Request a new one.</Text>
             <Button title="Request a new link" onPress={() => navigation.navigate('ForgotPassword')} />
           </View>
         ) : (

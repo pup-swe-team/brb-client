@@ -10,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import * as Linking from 'expo-linking';
-import { Ionicons } from '@expo/vector-icons';
 
 import { ScreenContainer } from '../../../shared/components';
 import { colors } from '../../../theme';
