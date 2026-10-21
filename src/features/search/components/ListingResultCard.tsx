@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme';
 import { VerifiedLabel } from '../../../shared/components/VerifiedLabel';
-import { CATEGORY_ICON } from '../../listings/constants';
+import { categoryIcon } from '../../listings/constants';
 import { Listing } from '../types';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -18,7 +18,7 @@ export function ListingResultCard({ listing, onPress }: Props) {
   return (
     <Pressable style={s.card} onPress={() => onPress?.(listing)} accessibilityRole="button">
       <View style={s.icon}>
-        <Ionicons name={CATEGORY_ICON[listing.category]} size={22} color={colors.primary} />
+        <Ionicons name={categoryIcon(listing.category)} size={22} color={colors.primary} />
       </View>
 
       <View style={s.info}>
@@ -42,11 +42,17 @@ export function ListingResultCard({ listing, onPress }: Props) {
       </View>
 
       <View style={s.right}>
-        <View style={s.ratingRow}>
-          <Ionicons name="star" size={12} color={colors.gold} />
-          <Text style={s.rating}>{listing.rating.toFixed(1)}</Text>
-        </View>
-        <Text style={s.muted}>({listing.reviewCount})</Text>
+        {listing.reviewCount > 0 ? (
+          <>
+            <View style={s.ratingRow}>
+              <Ionicons name="star" size={12} color={colors.gold} />
+              <Text style={s.rating}>{listing.rating.toFixed(1)}</Text>
+            </View>
+            <Text style={s.muted}>({listing.reviewCount})</Text>
+          </>
+        ) : (
+          <Text style={s.noRating}>No ratings yet</Text>
+        )}
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
       </View>
     </Pressable>
@@ -83,4 +89,5 @@ const s = StyleSheet.create({
   right: { alignItems: 'flex-end', justifyContent: 'space-between', alignSelf: 'stretch', marginLeft: spacing.xs },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   rating: { color: colors.text, fontSize: 10, fontWeight: '700' },
+  noRating: { color: colors.textMuted, fontSize: 8, textAlign: 'right' },
 });

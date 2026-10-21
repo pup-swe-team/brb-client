@@ -17,8 +17,10 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../../../theme';
 import { VerifiedLabel } from '../../../shared/components';
+import { USE_MOCK } from '../../../services/http';
 import { useVerificationStatus } from '../../profile/hooks/useVerificationStatus';
 import { PublicLenderProfile, getLenderProfile } from '../../profile/services/lenderProfile';
+import { ListingDetail, getListingDetail } from '../services/listingsService';
 import { AvailabilityCalendar } from '../components/AvailabilityCalendar';
 
 type CalendarPickerProps = {
@@ -38,7 +40,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
   const author = item.author || '';
   const price = item.price || '₱15 / day';
   const isFree = String(price).trim().toUpperCase() === 'FREE';
-  const requestActionLabel = isFree ? 'Borrow' : 'Rent';
   const photos: string[] =
     item.photos?.length
       ? item.photos
@@ -54,15 +55,39 @@ export default function ItemDetailScreen({ navigation, route }: any) {
   const availableTo: string | undefined = item.availableTo;
   const lenderId: string | undefined = item.lenderId;
 
+  // CP-303: when we know the listing id, fetch the full detail so photos,
+  // description, price, and reviews come from the server rather than the
+  // navigation params. Falls back silently to the params if the call fails.
+  const [detail, setDetail] = useState<ListingDetail | null>(null);
+  useEffect(() => {
+    const id = item.id;
+    if (!id || USE_MOCK) return;
+    let active = true;
+    getListingDetail(String(id))
+      .then((d) => active && setDetail(d))
+      .catch(() => {
+        // Keep rendering from the navigation params.
+      });
+    return () => {
+      active = false;
+    };
+  }, [item.id]);
+
+  const detailPhotos = detail?.photos?.length ? detail.photos : photos;
+  const detailPrice = detail?.price || price;
+  const detailIsFree = detail ? detail.isFree : isFree;
+  const detailTitle = detail?.title || title;
+
   // Identity status decides whether the person may send a request.
   const { status: verificationStatus, loading: statusLoading } = useVerificationStatus();
 
   // Lender summary + reviews come from the lender's public profile.
   const [lender, setLender] = useState<PublicLenderProfile | null>(null);
   useEffect(() => {
-    if (!lenderId) return;
+    const id = detail?.lenderId || lenderId;
+    if (!id) return;
     let active = true;
-    getLenderProfile(lenderId)
+    getLenderProfile(id)
       .then((p) => active && setLender(p))
       .catch(() => {
         // Keep the summary from the listing params.
@@ -70,9 +95,12 @@ export default function ItemDetailScreen({ navigation, route }: any) {
     return () => {
       active = false;
     };
-  }, [lenderId]);
+  }, [detail?.lenderId, lenderId]);
 
-  const reviews = (lender?.reviews ?? []).filter((r) => r.itemTitle === title);
+  // Prefer server reviews (CP-303); fall back to the lender profile's reviews.
+  const reviews = detail
+    ? detail.reviews.map((r) => ({ id: r.id, reviewerName: r.reviewerName, rating: r.rating, comment: r.comment }))
+    : (lender?.reviews ?? []).filter((r) => r.itemTitle === title).map((r) => ({ id: r.id, reviewerName: r.reviewerName, rating: r.rating, comment: r.comment }));
   const reviewTotal = reviews.length;
   const countFor = (stars: number) => reviews.filter((r) => r.rating === stars).length;
   const barWidth = (stars: number): `${number}%` =>
@@ -130,7 +158,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
         : { title: 'Verify your identity first', message: 'You need a verified account to request items. It only takes a few minutes.', action: 'Verify Now' };
 
   const confirmRequest = () => {
-    if (!isFree && !paymentMethod.trim()) {
+    if (!detailIsFree && !paymentMethod.trim()) {
       Alert.alert('Required field', 'Please enter a payment method.');
       return;
     }
@@ -138,8 +166,8 @@ export default function ItemDetailScreen({ navigation, route }: any) {
     setConfirmVisible(false);
     setRequestVisible(false);
     Alert.alert(
-      isFree ? 'Borrow request prepared' : 'Rental request prepared',
-      `Your ${isFree ? 'borrow' : 'rental'} request details are ready. Connect this action to your backend to submit the actual request.`,
+      detailIsFree ? 'Borrow request prepared' : 'Rental request prepared',
+      `Your ${detailIsFree ? 'borrow' : 'rental'} request details are ready. Connect this action to your backend to submit the actual request.`,
     );
   };
 
@@ -165,7 +193,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               )
             }
           >
-            {photos.map((uri, index) => (
+            {detailPhotos.map((uri, index) => (
               <Image
                 key={`${index}-${uri}`}
                 source={{ uri }}
@@ -189,12 +217,12 @@ export default function ItemDetailScreen({ navigation, route }: any) {
 
           <View style={styles.imageCount}>
             <Text style={styles.imageCountText}>
-              {photoIndex + 1}/{photos.length}
+              {photoIndex + 1}/{detailPhotos.length}
             </Text>
           </View>
 
           <View style={styles.priceBadge}>
-            <Text style={styles.priceText}>{price}</Text>
+            <Text style={styles.priceText}>{detailPrice}</Text>
           </View>
 
           <View style={styles.availableBadge}>
@@ -206,7 +234,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
         <View style={styles.titleSection}>
           <View style={styles.titleRow}>
             <Text style={styles.itemTitle} numberOfLines={2}>
-              {title}
+              {detailTitle}
             </Text>
 
             <Pressable
@@ -230,19 +258,19 @@ export default function ItemDetailScreen({ navigation, route }: any) {
         <View style={styles.contentSection}>
           <View style={styles.programBadge}>
             <Text style={styles.programText}>
-              {item.category || 'General'}
+              {detail?.category || item.category || 'General'}
             </Text>
           </View>
 
           <View style={styles.dateCard}>
-            <Text style={styles.dateTitle}>{isFree ? "When do you need to borrow it?" : "When do you need it?"}</Text>
+            <Text style={styles.dateTitle}>{detailIsFree ? "When do you need to borrow it?" : "When do you need it?"}</Text>
 
             <View style={styles.dateRow}>
               <Pressable
                 style={styles.dateBox}
                 onPress={() => openCalendar('checkout')}
               >
-                <Text style={styles.dateLabel}>{isFree ? "Borrow" : "Check-out"}</Text>
+                <Text style={styles.dateLabel}>{detailIsFree ? "Borrow" : "Check-out"}</Text>
                 <Text style={styles.addDate}>{checkout || 'Add date'}</Text>
               </Pressable>
 
@@ -269,10 +297,14 @@ export default function ItemDetailScreen({ navigation, route }: any) {
           <View style={styles.aboutSection}>
             <Text style={styles.sectionTitle}>About this Product</Text>
             {(item.details ||
-              (item.description ? [item.description] : ['No description provided.'])
-            ).map((detail: string, index: number) => (
-              <Text key={`${index}-${detail}`} style={styles.detailText}>
-                {detail}
+              (detail?.description
+                ? [detail.description]
+                : item.description
+                  ? [item.description]
+                  : ['No description provided.'])
+            ).map((line: string, index: number) => (
+              <Text key={`${index}-${line}`} style={styles.detailText}>
+                {line}
               </Text>
             ))}
           </View>
@@ -378,7 +410,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
           onPress={openRequest}
         >
           <Text style={styles.requestRentText}>
-            {isFree ? 'Request to Borrow' : 'Request to Rent'}
+            {detailIsFree ? 'Request to Borrow' : 'Request to Rent'}
           </Text>
         </Pressable>
       </View>
@@ -469,7 +501,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
             />
             <View style={styles.modalHeading}>
               <Text style={styles.modalTitle}>
-                {isFree ? 'Request to Borrow' : 'Request to Rent'}
+                {detailIsFree ? 'Request to Borrow' : 'Request to Rent'}
               </Text>
 
             </View>
@@ -484,7 +516,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               </View>
               <View style={styles.requestItemInfo}>
                 <Text style={styles.requestItemTitle} numberOfLines={2}>
-                  {title}
+                  {detailTitle}
                 </Text>
                 <Text style={styles.requestItemSubtitle}>
                   Lender: {lender?.fullName || item.lenderName || 'Lender'}
@@ -495,7 +527,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               </View>
             </View>
 
-            {!isFree && (
+            {!detailIsFree && (
               <>
                 <Text style={styles.inputLabel}>Payment Method</Text>
                 <TextInput

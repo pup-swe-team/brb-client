@@ -1,4 +1,5 @@
 import { http, USE_MOCK, clearAuthTokens, extractApiError, getApiErrorCode, getRefreshToken, setAuthTokens } from '../../../services/http';
+import { loadListingOptions } from '../../listings/constants';
 
 export type Affiliation = 'Student' | 'Faculty' | 'Staff';
 
@@ -75,6 +76,9 @@ export async function login(email: string, password: string): Promise<LoginRespo
   // Never store a session for an unverified account.
   if (!data.user.email_verified_at) throw new UnverifiedEmailError(data.user.email);
   await setAuthTokens(data.tokens.access, data.tokens.refresh);
+  // Categories/pickup locations need an authenticated request, so refresh them
+  // now that we have a token (boot-time load runs unauthenticated and 401s).
+  loadListingOptions();
   return data;
 }
 

@@ -1,8 +1,9 @@
 import { http, USE_MOCK, clearAuthTokens } from '../../../services/http';
 
-// NOTE: the backend contract for these endpoints is not documented yet (docs/BACKEND_CONNECTION.md).
-// Paths below are assumptions; adjust them when the users module ships them.
-// Mock switches: EXPO_PUBLIC_MOCK_NO_BLOCKERS=true lets deactivation succeed in mock mode.
+// Endpoint paths below match the shipped backend (`apps/users/urls.py`):
+//   /auth/me/  /auth/password-change/  /auth/email-change/  /auth/deactivate/
+// Still-mocked gaps (no endpoint yet): notification preferences (CP-802) and
+// the profile-photo upload. Mock switch: EXPO_PUBLIC_MOCK_NO_BLOCKERS=true.
 
 export type AccountProfile = {
   fullName: string;
@@ -57,9 +58,11 @@ export async function getAccountProfile(): Promise<AccountProfile> {
   const { data } = await http.get('/auth/me/');
   return {
     fullName: data.full_name ?? '',
+    // `photo` is not part of the /auth/me/ response yet, so avatars stay local.
     photoUri: data.photo ?? null,
     contactNumber: data.contact_number ?? '',
-    homeAddress: data.home_address ?? '',
+    // The backend stores a structured address; expose the free-text street part.
+    homeAddress: data.street_address ?? '',
     bio: data.bio ?? '',
     email: data.email ?? '',
   };
@@ -73,15 +76,15 @@ export async function updateProfile(p: ProfileUpdate): Promise<void> {
     mockProfile = { ...mockProfile, fullName: p.fullName, contactNumber: p.contactNumber, homeAddress: p.homeAddress, bio: p.bio, photoUri: p.photoUri };
     return;
   }
-  const form = new FormData();
-  form.append('full_name', p.fullName);
-  form.append('contact_number', p.contactNumber);
-  form.append('home_address', p.homeAddress);
-  form.append('bio', p.bio);
-  if (p.photoChanged && p.photoUri) {
-    form.append('photo', { uri: p.photoUri, name: 'profile.jpg', type: 'image/jpeg' } as any);
-  }
-  await http.patch('/auth/me/', form);
+  // Only the free-text/phone fields map cleanly. `municipality`/`province` are
+  // FK ids the client cannot derive from a free-text address, and the profile
+  // photo has no upload endpoint yet, so neither is sent.
+  await http.patch('/auth/me/', {
+    full_name: p.fullName,
+    contact_number: p.contactNumber,
+    bio: p.bio,
+    street_address: p.homeAddress,
+  });
 }
 
 export async function changePassword(current: string, next: string, confirm: string): Promise<void> {
@@ -90,23 +93,26 @@ export async function changePassword(current: string, next: string, confirm: str
     if (current === 'wrong') throw new Error('Your current password is incorrect.');
     return;
   }
-  await http.post('/auth/change-password/', { current_password: current, new_password: next, new_password_confirm: confirm });
+  await http.post('/auth/password-change/', { current_password: current, new_password: next, new_password_confirm: confirm });
 }
 
-export async function requestEmailChange(newEmail: string, password: string): Promise<void> {
+export async function requestEmailChange(newEmail: string, _password: string): Promise<void> {
   if (USE_MOCK) {
     await delay();
     return;
   }
-  await http.post('/auth/change-email/', { new_email: newEmail, password });
+  // CP-1002 proves the change with a link mailed to the new address; the
+  // current password is not part of the request payload.
+  await http.post('/auth/email-change/', { new_email: newEmail });
 }
 
-export async function resendEmailChangeVerification(newEmail: string): Promise<void> {
+export async function resendEmailChangeVerification(_newEmail: string): Promise<void> {
   if (USE_MOCK) {
     await delay(250);
     return;
   }
-  await http.post('/auth/change-email/resend/', { new_email: newEmail });
+  // No resend endpoint: the CP-1002 confirmation is a single mailed link.
+  throw new Error('Resending the email-change link is not available yet.');
 }
 
 export async function getNotificationPrefs(): Promise<NotificationPrefs> {
@@ -114,8 +120,8 @@ export async function getNotificationPrefs(): Promise<NotificationPrefs> {
     await delay(250);
     return JSON.parse(JSON.stringify(mockPrefs));
   }
-  const { data } = await http.get<NotificationPrefs>('/auth/notification-preferences/');
-  return data;
+  // Notification preferences belong to CP-802 (Sprint 5); no endpoint yet.
+  throw new Error('Notification preferences are not connected yet (CP-802). Set EXPO_PUBLIC_USE_MOCK=true to use mock data.');
 }
 
 export async function saveNotificationPrefs(prefs: NotificationPrefs): Promise<void> {
@@ -124,33 +130,52 @@ export async function saveNotificationPrefs(prefs: NotificationPrefs): Promise<v
     mockPrefs = JSON.parse(JSON.stringify(prefs));
     return;
   }
-  await http.put('/auth/notification-preferences/', prefs);
+  // Notification preferences belong to CP-802 (Sprint 5); no endpoint yet.
+  throw new Error('Notification preferences are not connected yet (CP-802). Set EXPO_PUBLIC_USE_MOCK=true to use mock data.');
 }
 
 // Open orders or requests that stop an account from being deactivated.
+// The backend has no dedicated "check" endpoint: blockers are returned as
+// counts in the 400 body of the deactivation POST itself.
 export async function getDeactivationBlockers(): Promise<string[]> {
   if (USE_MOCK) {
     await delay(250);
     if (process.env.EXPO_PUBLIC_MOCK_NO_BLOCKERS === 'true') return [];
     return ['You are still borrowing 1 item (T-Square). Return it first.', 'You have 1 overdue item (Concepts of Programming Languages).'];
   }
-  const { data } = await http.get<{ blockers: string[] }>('/auth/deactivate/check/');
-  return data.blockers ?? [];
+  // Nothing to pre-check server-side; let the deactivation call report them.
+  return [];
+}
+
+function blockersFromCounts(openOrders: unknown, openCases: unknown): string[] {
+  const out: string[] = [];
+  const orders = typeof openOrders === 'number' ? openOrders : 0;
+  const cases = typeof openCases === 'number' ? openCases : 0;
+  if (orders > 0) out.push(`You have ${orders} open order${orders === 1 ? '' : 's'}. Finish or cancel ${orders === 1 ? 'it' : 'them'} first.`);
+  if (cases > 0) out.push(`You have ${cases} unresolved unreturned-item case${cases === 1 ? '' : 's'}.`);
+  return out;
 }
 
 export async function deactivateAccount(password: string): Promise<void> {
-  const blockers = await getDeactivationBlockers();
-  if (blockers.length > 0) throw new DeactivationBlockedError(blockers);
-  if (!USE_MOCK) {
-    try {
-      await http.post('/auth/deactivate/', { password });
-    } catch (e: any) {
-      const list = e?.response?.data?.blockers;
-      if (e?.response?.status === 409 && Array.isArray(list)) throw new DeactivationBlockedError(list);
-      throw e;
-    }
-  } else {
+  if (USE_MOCK) {
+    const blockers = await getDeactivationBlockers();
+    if (blockers.length > 0) throw new DeactivationBlockedError(blockers);
     await delay();
+    await clearAuthTokens();
+    return;
+  }
+
+  try {
+    // The password is only used by the mock's pre-check; the real endpoint
+    // deactivates the caller's own account using the bearer token.
+    void password;
+    await http.post('/auth/deactivate/', {});
+  } catch (e: any) {
+    const data = e?.response?.data;
+    if (e?.response?.status === 400 && data && (data.open_orders != null || data.open_unreturned_cases != null)) {
+      throw new DeactivationBlockedError(blockersFromCounts(data.open_orders, data.open_unreturned_cases));
+    }
+    throw e;
   }
   await clearAuthTokens();
 }
