@@ -35,6 +35,22 @@ let categoryIdsByName = new Map<string, number>();
 let locationIdsByName = new Map<string, number>();
 let locationIdByListingName = new Map<string, number>();
 
+// Whether the live lists have been fetched. A name that has no id behind it
+// cannot be submitted (the API wants the FK id), so the create-listing form
+// must not offer one. The seed lists above are display-only placeholders and
+// are never submittable.
+let categoriesLoaded = false;
+let pickupLocationsLoaded = false;
+
+/**
+ * True when both live lists are available and every visible name maps to an
+ * id. Callers that submit a selection (the create-listing form) check this
+ * instead of assuming the seed list resolved.
+ */
+export function areListingOptionsReady(): boolean {
+  return categoriesLoaded && pickupLocationsLoaded;
+}
+
 function rebuildLocationIndex() {
   LOCATIONS = PICKUP_LOCATIONS.map((l) => l.name);
 }
@@ -67,10 +83,16 @@ export function getCategoryName(id: number | null | undefined): string | undefin
   return categoriesById.get(id);
 }
 
-// Pull the live category + pickup-location lists. Safe to call repeatedly; on
-// any failure the fallbacks stay in place. Never throws.
-export async function loadListingOptions(): Promise<void> {
-  if (USE_MOCK) return;
+// Pull the live category + pickup-location lists. Safe to call repeatedly and
+// never throws.
+//
+// Returns true only when both lists came back and every visible name now has
+// an id behind it. An empty list is a legitimate answer (the admins have not
+// set any up yet) and still counts as loaded -- the dropdown is then simply
+// empty, which is honest. A failed request does not: the seed names would
+// have no id, so the caller is told the lists are not ready.
+export async function loadListingOptions(): Promise<boolean> {
+  if (USE_MOCK) return true;
 
   const [categoriesRes, locationsRes] = await Promise.allSettled([
     http.get<ApiNamedRef[]>('/listings/categories/'),
@@ -79,22 +101,28 @@ export async function loadListingOptions(): Promise<void> {
 
   if (categoriesRes.status === 'fulfilled') {
     const rows = Array.isArray(categoriesRes.value.data) ? categoriesRes.value.data : [];
-    if (rows.length > 0) {
-      categoriesById = new Map(rows.map((c) => [c.id, c.name]));
-      categoryIdsByName = new Map(rows.map((c) => [c.name, c.id]));
-      CATEGORIES = rows.map((c) => c.name);
-    }
+    categoriesById = new Map(rows.map((c) => [c.id, c.name]));
+    categoryIdsByName = new Map(rows.map((c) => [c.name, c.id]));
+    // Replace the seed list even when it is empty: a seed name has no id
+    // behind it, so offering it would only produce a rejected submission.
+    CATEGORIES = rows.map((c) => c.name);
+    categoriesLoaded = true;
+  } else {
+    categoriesLoaded = false;
   }
 
   if (locationsRes.status === 'fulfilled') {
     const payload = locationsRes.value.data;
     const rows = Array.isArray(payload) ? payload : (payload?.results ?? []);
-    if (rows.length > 0) {
-      PICKUP_LOCATIONS = rows.map((l) => ({ id: l.id, name: l.name, detail: l.description ?? '' }));
-      locationIdsByName = new Map(rows.map((l) => [l.name, l.id]));
-      rebuildLocationIndex();
-    }
+    locationIdsByName = new Map(rows.map((l) => [l.name, l.id]));
+    PICKUP_LOCATIONS = rows.map((l) => ({ id: l.id, name: l.name, detail: l.description ?? '' }));
+    rebuildLocationIndex();
+    pickupLocationsLoaded = true;
+  } else {
+    pickupLocationsLoaded = false;
   }
+
+  return areListingOptionsReady();
 }
 
 export const CATEGORY_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {

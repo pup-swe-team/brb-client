@@ -145,6 +145,19 @@ total_reviews}`.
 JPEG/PNG/WEBP, magic-byte checked). Create requires an **identity-verified active
 lender**; the window needs `start >= today` and `end >= start`.
 
+- **Every field above is mandatory** and a missing one comes back as a bare
+  `400 {"<field>": ["This field is required."]}`. In particular:
+  - `description` may not be blank (`Listing.description` is non-blank), so the
+    form treats it as a required field;
+  - `category` and `pickup_location` are **foreign-key ids**, not names. A name
+    that cannot be resolved to an id must never be sent as an empty field --
+    the client resolves the id from `GET /listings/categories/` and
+    `GET /pickup-locations/` and refuses to submit otherwise.
+  - The two list endpoints are the single source of truth for the dropdowns.
+    The hardcoded seed names in `constants.ts` are display-only placeholders
+    with no id behind them, so `loadListingOptions()` replaces them with the
+    live list (even when it is empty) and reports whether the lists are usable.
+
 - **`getMyListings()` is intentionally unsupported.** There is no owner-scoped
   listings feed; `GET /listings/` is search-only and returns `status=active` rows
   only, so a lender's deactivated listings are unreachable. This belongs to

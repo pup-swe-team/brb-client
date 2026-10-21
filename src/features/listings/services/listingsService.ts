@@ -55,7 +55,7 @@ let mockListings: ManagedListing[] = [
     pickup: 'PUP Library', photos: [], status: 'active', activeOrders: 0,
   },
   {
-    id: 'm3', title: 'T-Square', category: 'School Supplies', courseCode: '', description: '', condition: 'Fair',
+    id: 'm3', title: 'T-Square', category: 'School Supplies', courseCode: '', description: 'Plastic T-Square, 30 cm.', condition: 'Fair',
     lendingType: 'Free Lending', price: '', duration: '3 days', availability: 'Available now', fromDate: '2026-10-01', untilDate: '',
     pickup: 'PUP CEA Building', photos: [], status: 'inactive', activeOrders: 0,
   },
@@ -227,11 +227,29 @@ function buildForm(input: ListingInput, opts: { includePhotos: boolean }): FormD
   form.append('description', input.description);
   form.append('condition', input.condition);
 
+  // The API wants the foreign-key id, not the name. A name that has no id
+  // behind it (the lists did not load, or the row was renamed) must not be
+  // dropped on the floor -- that would reach the server as a missing field
+  // and come back as a bare "This field is required."
   const categoryId = getCategoryId(input.category);
-  if (categoryId != null) form.append('category', String(categoryId));
+  if (categoryId == null) {
+    throw new Error(
+      input.category
+        ? 'That category is no longer available. Reload the page and pick another one.'
+        : 'Choose a category before posting your item.',
+    );
+  }
+  form.append('category', String(categoryId));
 
   const pickupId = getPickupLocationIdForListing(input.pickup);
-  if (pickupId != null) form.append('pickup_location', String(pickupId));
+  if (pickupId == null) {
+    throw new Error(
+      input.pickup
+        ? 'That pickup location is no longer available. Reload the page and pick another one.'
+        : 'Choose a pickup location before posting your item.',
+    );
+  }
+  form.append('pickup_location', String(pickupId));
 
   form.append('is_ownership_confirmed', 'true');
 

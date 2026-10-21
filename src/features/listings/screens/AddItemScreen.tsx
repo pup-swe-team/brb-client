@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -6,7 +6,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '../../../theme';
 import { useVerificationStatus } from '../../profile/hooks/useVerificationStatus';
-import { CATEGORIES, CONDITIONS, PICKUP_LOCATIONS, isValidDate, todayISO } from '../constants';
+import {
+  CATEGORIES,
+  CONDITIONS,
+  PICKUP_LOCATIONS,
+  getCategoryId,
+  getPickupLocationIdForListing,
+  isValidDate,
+  loadListingOptions,
+  todayISO,
+} from '../constants';
 import { ManagedListing, createListing, updateListing } from '../services/listingsService';
 
 const RED = '#B2080C';
@@ -18,7 +27,8 @@ const WHITE = '#FFFFFF';
 const ERROR = '#F16C7A';
 
 type Photo = { uri: string; name: string; size?: number | null; mimeType?: string | null };
-type Errors = { photos?: string[]; title?: string; category?: string; pickup?: string; ownership?: string; price?: string; from?: string; until?: string };
+type Errors = { photos?: string[]; title?: string; description?: string; category?: string; pickup?: string; ownership?: string; price?: string; from?: string; until?: string };
+type OptionsState = 'loading' | 'ready' | 'error';
 
 export default function AddItemScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
@@ -49,6 +59,35 @@ export default function AddItemScreen({ navigation, route }: any) {
   const [dropdown, setDropdown] = useState<'pickup' | null>(null);
   const [categoryOpen, setCategoryOpen] = useState(false);
 
+  // The category and pickup-location lists decide what can be submitted, so
+  // they are fetched here rather than left to a fire-and-forget call at app
+  // boot. Until they arrive the form is not offered: a name without an id
+  // behind it would be rejected by the API.
+  const [optionsState, setOptionsState] = useState<OptionsState>('loading');
+
+  const fetchOptions = useCallback((showSpinner: boolean) => {
+    if (showSpinner) setOptionsState('loading');
+    loadListingOptions()
+      .then((ready) => setOptionsState(ready ? 'ready' : 'error'))
+      .catch(() => setOptionsState('error'));
+  }, []);
+
+  // Loaded once when the screen opens. A refresh that failed must not replace
+  // a form the user has already filled in, so this does not re-run on focus.
+  useEffect(() => {
+    let active = true;
+    loadListingOptions()
+      .then((ready) => {
+        if (active) setOptionsState(ready ? 'ready' : 'error');
+      })
+      .catch(() => {
+        if (active) setOptionsState('error');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const choosePhoto = async () => {
     if (photos.length >= 5) return Alert.alert('Photo limit reached', 'You can add up to 5 photos.');
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -75,7 +114,12 @@ export default function AddItemScreen({ navigation, route }: any) {
     const next: Errors = {};
     if (!photos.length) next.photos = ['Add at least 1 photo.'];
     if (!title.trim()) next.title = 'Resource title is required.';
+    // The API requires a description (a listing always carries one), so the
+    // field is marked as required here too. Leaving it blank used to reach
+    // the server and come back as a bare "This field may not be blank."
+    if (!description.trim()) next.description = 'Add a short description of the item.';
     if (!category) next.category = 'Choose a category.';
+    else if (getCategoryId(category) == null) next.category = 'That category is no longer available. Reload and choose another one.';
     if (lendingType === 'For Rent' && (!price.trim() || Number(price.replace(/[^0-9.]/g, '')) <= 0)) next.price = 'Enter a valid price per day.';
     if (availability === 'Available from') {
       const from = fromDate.trim();
@@ -89,6 +133,7 @@ export default function AddItemScreen({ navigation, route }: any) {
     }
     if (!pickup) next.pickup = 'Choose a pickup location.';
     else if (!PICKUP_LOCATIONS.some((l) => l.name === pickup)) next.pickup = 'Choose one of the locations set by BRB Admins.';
+    else if (getPickupLocationIdForListing(pickup) == null) next.pickup = 'That pickup location is no longer available. Reload and choose another one.';
     if (!ownership) next.ownership = 'Confirm ownership to post this item.';
     setErrors(v => ({ ...v, ...next }));
     setShowErrors(true);
@@ -165,6 +210,52 @@ export default function AddItemScreen({ navigation, route }: any) {
     );
   }
 
+  // The category and pickup lists must be loaded before the form is offered:
+  // a name without an id behind it cannot be submitted, and the API would
+  // reject the post with a bare "This field is required."
+  if (optionsState !== 'ready' || !CATEGORIES.length || !PICKUP_LOCATIONS.length) {
+    const missing = optionsState === 'ready';
+    return (
+      <View style={s.screen}>
+        {header}
+        <View style={s.gate}>
+          {optionsState === 'loading' ? (
+            <>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={s.gateBody}>Loading categories and pickup locations...</Text>
+            </>
+          ) : missing ? (
+            <>
+              <Ionicons name="information-circle-outline" size={52} color={RED} />
+              <Text style={s.gateTitle}>Nothing to list yet</Text>
+              <Text style={s.gateBody}>
+                {!CATEGORIES.length && !PICKUP_LOCATIONS.length
+                  ? 'No categories and pickup locations have been set up yet. Ask a BRB Admin to add them.'
+                  : !CATEGORIES.length
+                    ? 'No categories have been set up yet. Ask a BRB Admin to add them.'
+                    : 'No pickup locations have been set up yet. Ask a BRB Admin to add them.'}
+              </Text>
+              <Pressable style={[s.postButton, s.gateButton]} onPress={() => fetchOptions(true)}>
+                <Text style={s.postText}>Refresh</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Ionicons name="cloud-offline-outline" size={52} color={RED} />
+              <Text style={s.gateTitle}>Could not load the form</Text>
+              <Text style={s.gateBody}>
+                We could not reach the server to get the list of categories and pickup locations. Check your connection and try again.
+              </Text>
+              <Pressable style={[s.postButton, s.gateButton]} onPress={() => fetchOptions(true)}>
+                <Text style={s.postText}>Try Again</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      </View>
+    );
+  }
+
   return <View style={s.screen}>
     <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
     {header}
@@ -215,7 +306,7 @@ export default function AddItemScreen({ navigation, route }: any) {
       {errorText(errors.category)}
 
       <Text style={s.label}>Course Code (Optional)</Text><TextInput value={courseCode} onChangeText={setCourseCode} placeholder="e.g. MATH 101" placeholderTextColor="#A5AFC1" style={s.input} autoCapitalize="characters"/>
-      <Text style={s.label}>Description</Text><TextInput value={description} onChangeText={v => setDescription(v.slice(0,300))} placeholder="Describe the item's condition and included accessories." placeholderTextColor="#A5AFC1" style={[s.input,s.description]} multiline textAlignVertical="top" maxLength={300}/><Text style={s.counter}>{description.length} / 300</Text>
+      <Text style={s.label}>Description <Text style={s.required}>*</Text></Text><TextInput value={description} onChangeText={v => {setDescription(v.slice(0,300)); setErrors(e => ({...e, description: undefined}));}} placeholder="Describe the item's condition and included accessories." placeholderTextColor="#A5AFC1" style={[s.input,s.description, showErrors && errors.description && s.inputError]} multiline textAlignVertical="top" maxLength={300}/>{errorText(errors.description)}<Text style={s.counter}>{description.length} / 300</Text>
 
       <Text style={s.label}>Condition <Text style={s.required}>*</Text></Text><View style={s.chipRow}>{CONDITIONS.map(v => chip(v, condition === v, () => setCondition(v)))}</View>
       <Text style={s.label}>Lending Type <Text style={s.required}>*</Text></Text><View style={s.segmentRow}>{(['Free Lending','For Rent'] as const).map(v => <Pressable key={v} onPress={() => {setLendingType(v); if (v === 'Free Lending') {setPrice(''); setErrors(e => ({...e, price: undefined}));} else if (!price) setPrice('₱10');}} style={[s.segment, lendingType === v && s.segmentSelected]}><Text style={[s.segmentText,lendingType === v && s.segmentTextSelected]}>{v}</Text></Pressable>)}</View>
