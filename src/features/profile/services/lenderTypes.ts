@@ -23,6 +23,7 @@ export type LenderListing = {
 export type PublicLenderProfile = {
   id: string;
   fullName: string;
+  photoUrl?: string;
   verified: boolean;
   affiliation: Affiliation;
   program?: string;

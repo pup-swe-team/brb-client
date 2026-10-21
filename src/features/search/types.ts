@@ -1,6 +1,10 @@
+import { CATEGORIES, LOCATIONS, ListingCategory } from '../listings/constants';
+
+export { CATEGORIES, LOCATIONS };
+export type { ListingCategory };
+
 export type SortOption = 'relevance' | 'newest' | 'rating';
 
-export type ListingCategory = 'Books' | 'Equipment' | 'Clothing' | 'Electronics' | 'Lab Gear';
 
 export type Listing = {
   id: string;
@@ -22,6 +26,25 @@ export type SearchFilters = {
   minRating: number | null;
   availableFrom: string; // '' = not set
   availableTo: string; // '' = not set
+};
+
+export type LenderSummary = {
+  id: string;
+  fullName: string;
+  verified: boolean;
+  affiliation: string;
+  program?: string;
+  photoUrl?: string;
+  rating: number;
+  reviewCount: number;
+  activeListings: number;
+};
+
+export type LenderSearchResult = {
+  items: LenderSummary[];
+  page: number;
+  totalPages: number;
+  total: number;
 };
 
 export type SearchParams = {
@@ -46,11 +69,6 @@ export const EMPTY_FILTERS: SearchFilters = {
   availableFrom: '',
   availableTo: '',
 };
-
-export const CATEGORIES: ListingCategory[] = ['Books', 'Equipment', 'Clothing', 'Electronics', 'Lab Gear'];
-
-// TODO: replace with the real campus locations from the backend.
-export const LOCATIONS = ['Main Campus', 'Engineering Bldg', 'Library', 'Dorm Area'];
 
 export const RATING_OPTIONS: { label: string; value: number | null }[] = [
   { label: 'Any', value: null },

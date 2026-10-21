@@ -1,7 +1,6 @@
 import { Listing, SearchParams, SearchResult } from '../types';
+import { USE_MOCK } from '../../../services/http';
 import { MOCK_LISTINGS } from './mockListings';
-
-const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK === 'true';
 
 function matches(l: Listing, p: SearchParams): boolean {
   const kw = p.keyword.trim().toLowerCase();

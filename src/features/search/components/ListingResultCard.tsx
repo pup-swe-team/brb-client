@@ -3,15 +3,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme';
 import { VerifiedLabel } from '../../../shared/components/VerifiedLabel';
-import { Listing, ListingCategory } from '../types';
-
-const CATEGORY_ICON: Record<ListingCategory, keyof typeof Ionicons.glyphMap> = {
-  Books: 'book-outline',
-  Equipment: 'construct-outline',
-  Clothing: 'shirt-outline',
-  Electronics: 'hardware-chip-outline',
-  'Lab Gear': 'flask-outline',
-};
+import { CATEGORY_ICON } from '../../listings/constants';
+import { Listing } from '../types';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function fmt(d: string) {

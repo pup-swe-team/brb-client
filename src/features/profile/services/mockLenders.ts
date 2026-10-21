@@ -13,9 +13,9 @@ export const MOCK_LENDERS: Record<string, PublicLenderProfile> = {
     reviewCount: 5,
     memberSince: '2025-08-15',
     listings: [
-      { id: 'l1', title: 'Basic Calculator', category: 'Equipment', location: 'Main Campus', availableFrom: '2026-10-01', availableTo: '2026-12-31' },
-      { id: 'l7', title: 'Arduino Uno Starter Kit', category: 'Electronics', location: 'Dorm Area', availableFrom: '2026-11-01', availableTo: '2026-12-20' },
-      { id: 'l13', title: 'Discrete Math Reviewer', category: 'Books', location: 'Library', availableFrom: '2026-10-10', availableTo: '2026-12-10' },
+      { id: 'l1', title: 'Basic Calculator', category: 'School Supplies', location: 'PUP Main Gate', availableFrom: '2026-10-01', availableTo: '2026-12-31' },
+      { id: 'l7', title: 'Arduino Uno Starter Kit', category: 'Electronics', location: 'PUP Lagoon', availableFrom: '2026-11-01', availableTo: '2026-12-20' },
+      { id: 'l13', title: 'Discrete Math Reviewer', category: 'Textbooks', location: 'PUP Library', availableFrom: '2026-10-10', availableTo: '2026-12-10' },
     ],
     reviews: [
       { id: 'r1', reviewerName: 'Princess Izzy Dancal', reviewerVerified: true, rating: 5, itemTitle: 'Basic Calculator', date: '2026-10-07', comment: 'Smooth handoff and the calculator was in perfect condition. Would borrow again.' },
@@ -35,9 +35,9 @@ export const MOCK_LENDERS: Record<string, PublicLenderProfile> = {
     reviewCount: 4,
     memberSince: '2025-09-02',
     listings: [
-      { id: 'l2', title: 'Lab Coat (Medium)', category: 'Lab Gear', location: 'Engineering Bldg', availableFrom: '2026-10-10', availableTo: '2026-11-30' },
-      { id: 'l8', title: 'Lab Apron (Large)', category: 'Lab Gear', location: 'Main Campus', availableFrom: '2026-10-12', availableTo: '2026-11-15' },
-      { id: 'l14', title: 'Extension Cord (5m)', category: 'Electronics', location: 'Dorm Area', availableFrom: '2026-10-01', availableTo: '2026-12-31' },
+      { id: 'l2', title: 'Lab Coat (Medium)', category: 'Lab Equipment', location: 'PUP CEA Building', availableFrom: '2026-10-10', availableTo: '2026-11-30' },
+      { id: 'l8', title: 'Lab Apron (Large)', category: 'Lab Equipment', location: 'PUP Main Gate', availableFrom: '2026-10-12', availableTo: '2026-11-15' },
+      { id: 'l14', title: 'Extension Cord (5m)', category: 'Electronics', location: 'PUP Lagoon', availableFrom: '2026-10-01', availableTo: '2026-12-31' },
     ],
     reviews: [
       { id: 'r6', reviewerName: 'Danielo Kim R. Ang', reviewerVerified: true, rating: 5, itemTitle: 'Lab Coat (Medium)', date: '2026-10-03', comment: 'Clean and fits well.' },
@@ -56,8 +56,8 @@ export const MOCK_LENDERS: Record<string, PublicLenderProfile> = {
     reviewCount: 4,
     memberSince: '2026-01-20',
     listings: [
-      { id: 'l4', title: 'Concepts of Programming Languages', category: 'Books', location: 'Library', availableFrom: '2026-10-01', availableTo: '2026-10-31' },
-      { id: 'l11', title: 'Barong Tagalog (Large)', category: 'Clothing', location: 'Main Campus', availableFrom: '2026-10-22', availableTo: '2026-11-05' },
+      { id: 'l4', title: 'Concepts of Programming Languages', category: 'Textbooks', location: 'PUP Library', availableFrom: '2026-10-01', availableTo: '2026-10-31' },
+      { id: 'l11', title: 'Barong Tagalog (Large)', category: 'Others', location: 'PUP Main Gate', availableFrom: '2026-10-22', availableTo: '2026-11-05' },
     ],
     reviews: [
       { id: 'r10', reviewerName: 'Neo Ervine Y. Geroda', reviewerVerified: true, rating: 4, itemTitle: 'Concepts of Programming Languages', date: '2026-09-25', comment: 'Book was fine.' },

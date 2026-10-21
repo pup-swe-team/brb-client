@@ -13,6 +13,9 @@ import {
 } from '../../../shared/components';
 
 import { colors } from '../../../theme';
+import { extractApiError, requestPasswordReset } from '../services/authService';
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ForgotPasswordScreen({
   navigation,
@@ -21,18 +24,31 @@ export default function ForgotPasswordScreen({
     useState('');
 
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSendEmail = () => {
+  const handleSendEmail = async () => {
+    if (loading) return;
     setError('');
 
-    if (!emailOrUsername.trim()) {
-      setError(
-        'Please enter your PUP Webmail or Username.'
-      );
+    const email = emailOrUsername.trim();
+    if (!email) {
+      setError('Please enter your PUP Webmail.');
+      return;
+    }
+    if (!EMAIL_PATTERN.test(email)) {
+      setError('Please enter a valid email address.');
       return;
     }
 
-    navigation.navigate('PasswordResetSent');
+    setLoading(true);
+    try {
+      await requestPasswordReset(email);
+      navigation.navigate('PasswordResetSent');
+    } catch (err) {
+      setError(extractApiError(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -70,7 +86,7 @@ export default function ForgotPasswordScreen({
         <Text style={styles.description}>
           Enter your PUP Webmail that you used to
           {'\n'}
-          register. We'll send you a link to reset your
+          register. We&apos;ll send you a link to reset your
           {'\n'}
           password.
         </Text>
@@ -79,13 +95,16 @@ export default function ForgotPasswordScreen({
         <View style={styles.emailSection}>
 
           <Text style={styles.label}>
-            Email or Username
+            Email
           </Text>
 
           <Input
-            placeholder="Enter your PUP Webmail or Username"
+            placeholder="Enter your PUP Webmail"
             value={emailOrUsername}
-            onChangeText={setEmailOrUsername}
+            onChangeText={(v) => {
+              setEmailOrUsername(v);
+              setError('');
+            }}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="email-address"
@@ -97,10 +116,11 @@ export default function ForgotPasswordScreen({
         {/* SEND EMAIL */}
         <Pressable
           onPress={handleSendEmail}
-          style={styles.sendButton}
+          disabled={loading}
+          style={[styles.sendButton, loading && { opacity: 0.6 }]}
         >
           <Text style={styles.sendButtonText}>
-            Send Email
+            {loading ? 'Sending…' : 'Send Email'}
           </Text>
         </Pressable>
 

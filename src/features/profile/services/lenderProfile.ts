@@ -1,14 +1,13 @@
+import { USE_MOCK } from '../../../services/http';
 import { PublicLenderProfile } from './lenderTypes';
 import { MOCK_LENDERS } from './mockLenders';
 
 export * from './lenderTypes';
 
-const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK !== 'false';
-
 export async function getLenderProfile(lenderId: string): Promise<PublicLenderProfile> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 300));
-    const profile = MOCK_LENDERS[lenderId] ?? MOCK_LENDERS.u1;
+    const profile = MOCK_LENDERS[lenderId];
     if (!profile) {
       throw new Error('Lender not found');
     }

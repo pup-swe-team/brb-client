@@ -10,12 +10,15 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radius, spacing } from '../../../theme';
 import { ScreenContainer } from '../../../shared/components';
 import { FilterModal } from '../components/FilterModal';
+import { LenderSearchList } from '../components/LenderSearchList';
 import { ListingResultCard } from '../components/ListingResultCard';
 import { NoResults } from '../components/NoResults';
+import { lenderIdByName } from '../services/searchLenders';
 import { searchListings } from '../services/searchListings';
 import {
   EMPTY_FILTERS,
@@ -27,7 +30,9 @@ import {
   countActiveFilters,
 } from '../types';
 
-export default function SearchScreen() {
+export default function SearchScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
+  const [mode, setMode] = useState<'items' | 'lenders'>('items');
   const [keyword, setKeyword] = useState('');
   const [query, setQuery] = useState(''); // debounced keyword
   const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
@@ -53,6 +58,7 @@ export default function SearchScreen() {
 
   const fetchPage = useCallback(
     async (nextPage: number, replace: boolean) => {
+      if (mode !== 'items') return;
       const id = ++requestId.current;
       if (replace) setLoading(true);
       else setLoadingMore(true);
@@ -74,12 +80,13 @@ export default function SearchScreen() {
         }
       }
     },
-    [query, filters, sort],
+    [query, filters, sort, mode],
   );
 
   // New keyword / filters / sort -> back to page 1.
   useEffect(() => {
-    fetchPage(1, true);
+    const t = setTimeout(() => fetchPage(1, true), 0);
+    return () => clearTimeout(t);
   }, [fetchPage]);
 
   const loadMore = () => {
@@ -95,10 +102,10 @@ export default function SearchScreen() {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer edges={[]} padded={false}>
       <View style={s.screen}>
         {/* HEADER */}
-        <View style={s.header}>
+        <View style={[s.header, { paddingTop: insets.top }]}>
           <Text style={s.headerTitle}>Search</Text>
         </View>
 
@@ -108,7 +115,7 @@ export default function SearchScreen() {
             <Ionicons name="search" size={16} color={colors.textMuted} />
             <TextInput
               style={s.searchInput}
-              placeholder="Search items, books, gear..."
+              placeholder={mode === 'items' ? 'Search items, books, gear...' : 'Search lenders by name...'}
               placeholderTextColor={colors.textMuted}
               value={keyword}
               onChangeText={setKeyword}
@@ -122,6 +129,7 @@ export default function SearchScreen() {
             ) : null}
           </View>
 
+          {mode === 'items' ? (
           <Pressable
             style={s.filterBtn}
             onPress={() => setFilterOpen(true)}
@@ -135,8 +143,32 @@ export default function SearchScreen() {
               </View>
             ) : null}
           </Pressable>
+          ) : null}
         </View>
 
+        {/* MODE */}
+        <View style={s.sortBar}>
+          {(['items', 'lenders'] as const).map((m) => (
+            <Pressable
+              key={m}
+              style={[s.sortBtn, mode === m && s.sortBtnActive]}
+              onPress={() => setMode(m)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: mode === m }}
+            >
+              <Text style={[s.sortText, mode === m && s.sortTextActive]}>{m === 'items' ? 'Items' : 'Lenders'}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {mode === 'lenders' ? (
+          <LenderSearchList
+            query={query}
+            onClear={clearAll}
+            onOpen={(l) => navigation.navigate('LenderProfile', { lenderId: l.id })}
+          />
+        ) : (
+        <>
         {/* SORT */}
         <View style={s.sortBar}>
           {SORT_OPTIONS.map((o) => (
@@ -168,7 +200,28 @@ export default function SearchScreen() {
           <FlatList
             data={items}
             keyExtractor={(l) => l.id}
-            renderItem={({ item }) => <ListingResultCard listing={item} /* TODO: open listing details */ />}
+            renderItem={({ item }) => (
+              <ListingResultCard
+                listing={item}
+                onPress={(l) =>
+                  navigation.navigate('ItemDetail', {
+                    item: {
+                      id: l.id,
+                      title: l.title,
+                      category: l.category,
+                      location: l.location,
+                      price: 'FREE',
+                      author: l.ownerName,
+                      lenderName: l.ownerName,
+                      lenderId: lenderIdByName(l.ownerName),
+                      lenderVerified: l.ownerVerified,
+                      availableFrom: l.availableFrom,
+                      availableTo: l.availableTo,
+                    },
+                  })
+                }
+              />
+            )}
             contentContainerStyle={s.list}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -192,6 +245,9 @@ export default function SearchScreen() {
           />
         )}
 
+        </>
+        )}
+
         <FilterModal
           visible={filterOpen}
           filters={filters}
@@ -207,18 +263,11 @@ export default function SearchScreen() {
 }
 
 const s = StyleSheet.create({
-  // Same full-bleed trick as ProfileScreen so the header spans the screen.
-  screen: {
-    flex: 1,
-    width: '110%',
-    backgroundColor: colors.bg,
-    marginLeft: -spacing.lg,
-    marginRight: -spacing.lg,
-    padding: 0,
-  },
+  screen: { flex: 1, backgroundColor: colors.bg },
   header: {
     width: '100%',
-    height: 52,
+    minHeight: 52,
+    paddingBottom: spacing.md,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,

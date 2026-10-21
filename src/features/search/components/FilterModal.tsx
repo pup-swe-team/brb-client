@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme';
@@ -166,95 +166,6 @@ export function FilterModal({ visible, filters, onApply, onClose }: Props) {
       {visible ? (
         <FilterContent filters={filters} onApply={onApply} onClose={onClose} />
       ) : null}
-    </Modal>
-  );
-}
-
-        <View style={s.sheet}>
-          <View style={s.sheetHeader}>
-            <Text style={s.title}>Filters</Text>
-            <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close">
-              <Ionicons name="close" size={20} color={colors.text} />
-            </Pressable>
-          </View>
-
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
-            <View style={s.section}>
-              <Text style={s.label}>Category</Text>
-              <View style={s.chips}>
-                <Chip label="All" active={draft.category === null} onPress={() => setDraft({ ...draft, category: null })} />
-                {CATEGORIES.map((c) => (
-                  <Chip key={c} label={c} active={draft.category === c} onPress={() => setDraft({ ...draft, category: c })} />
-                ))}
-              </View>
-            </View>
-
-            <View style={s.section}>
-              <Text style={s.label}>Location</Text>
-              <View style={s.chips}>
-                <Chip label="All" active={draft.location === null} onPress={() => setDraft({ ...draft, location: null })} />
-                {LOCATIONS.map((l) => (
-                  <Chip key={l} label={l} active={draft.location === l} onPress={() => setDraft({ ...draft, location: l })} />
-                ))}
-              </View>
-            </View>
-
-            <View style={s.section}>
-              <Text style={s.label}>Minimum rating</Text>
-              <View style={s.chips}>
-                {RATING_OPTIONS.map((r) => (
-                  <Chip
-                    key={r.label}
-                    label={r.label}
-                    active={draft.minRating === r.value}
-                    onPress={() => setDraft({ ...draft, minRating: r.value })}
-                  />
-                ))}
-              </View>
-            </View>
-
-            <View style={s.section}>
-              <Text style={s.label}>Availability dates</Text>
-              <View style={s.row}>
-                <View style={{ flex: 1 }}>
-                  <Input
-                    label="From"
-                    placeholder="YYYY-MM-DD"
-                    value={draft.availableFrom}
-                    onChangeText={(v) => setDraft({ ...draft, availableFrom: v })}
-                    keyboardType="numbers-and-punctuation"
-                    maxLength={10}
-                    autoCorrect={false}
-                    error={errors.from}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Input
-                    label="To"
-                    placeholder="YYYY-MM-DD"
-                    value={draft.availableTo}
-                    onChangeText={(v) => setDraft({ ...draft, availableTo: v })}
-                    keyboardType="numbers-and-punctuation"
-                    maxLength={10}
-                    autoCorrect={false}
-                    error={errors.to}
-                  />
-                </View>
-              </View>
-              <Text style={s.hint}>Shows listings that are available for the whole range. One date works too.</Text>
-            </View>
-          </ScrollView>
-
-          <View style={s.row}>
-            <View style={{ flex: 1 }}>
-              <Button title="Reset" variant="secondary" onPress={reset} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Button title="Apply" onPress={apply} />
-            </View>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
     </Modal>
   );
 }

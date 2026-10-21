@@ -23,8 +23,16 @@ const DOC_TYPE_LOOKUP: Record<IdDocumentType, string> = {
   'Government ID': 'government_id',
 };
 
+// Mock mode only. Set EXPO_PUBLIC_MOCK_VERIFIED=true to start as an approved user;
+// submitting an ID in mock mode moves the status to 'pending'.
+let mockStatus: IdentityDocumentStatus | undefined =
+  process.env.EXPO_PUBLIC_MOCK_VERIFIED === 'true' ? 'approved' : undefined;
+
 export async function submitIdDocument(payload: SubmitIdPayload) {
-  if (USE_MOCK) return { detail: 'Submission recorded (mock).' };
+  if (USE_MOCK) {
+    mockStatus = 'pending';
+    return { detail: 'Submission recorded (mock).' };
+  }
 
   const form = new FormData();
   form.append('document_type', DOC_TYPE_LOOKUP[payload.documentType]);
@@ -56,7 +64,7 @@ export async function submitIdDocument(payload: SubmitIdPayload) {
 export async function getLatestIdentityDocumentStatus(): Promise<
   IdentityDocumentStatus | undefined
 > {
-  if (USE_MOCK) return undefined;
+  if (USE_MOCK) return mockStatus;
 
   const { data } = await http.get<{
     count: number;

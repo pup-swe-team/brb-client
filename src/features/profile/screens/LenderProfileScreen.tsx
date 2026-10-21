@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radius, spacing } from '../../../theme';
 import { Button, ScreenContainer } from '../../../shared/components';
@@ -24,10 +25,11 @@ function initials(name: string) {
 }
 
 function Shell({ onBack, children }: { onBack: () => void; children: React.ReactNode }) {
+  const insets = useSafeAreaInsets();
   return (
-    <ScreenContainer>
+    <ScreenContainer edges={['bottom']} padded={false}>
       <View style={s.screen}>
-        <View style={s.header}>
+        <View style={[s.header, { paddingTop: insets.top }]}>
           <Pressable onPress={onBack} hitSlop={12} style={s.backBtn} accessibilityRole="button" accessibilityLabel="Go back">
             <Ionicons name="arrow-back" size={20} color={colors.white} />
           </Pressable>
@@ -190,9 +192,14 @@ export default function LenderProfileScreen({ navigation, route }: any) {
                       category: l.category,
                       location: l.location,
                       lenderName: lender.fullName,
+                      lenderId: lender.id,
+                      lenderVerified: lender.verified,
+                      affiliation: lender.affiliation,
                       author: lender.fullName,
                       rating: String(lender.rating),
                       price: 'FREE',
+                      availableFrom: l.availableFrom,
+                      availableTo: l.availableTo,
                     },
                   })
                 }
@@ -216,18 +223,11 @@ export default function LenderProfileScreen({ navigation, route }: any) {
 }
 
 const s = StyleSheet.create({
-  // Same full-bleed trick as ProfileScreen so the header spans the screen.
-  screen: {
-    flex: 1,
-    width: '110%',
-    backgroundColor: colors.bg,
-    marginLeft: -spacing.lg,
-    marginRight: -spacing.lg,
-    padding: 0,
-  },
+  screen: { flex: 1, backgroundColor: colors.bg },
   header: {
     width: '100%',
-    height: 52,
+    minHeight: 52 + 0,
+    paddingBottom: spacing.md,
     backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',

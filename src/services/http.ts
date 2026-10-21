@@ -61,6 +61,7 @@ const PUBLIC_ENDPOINTS = [
   '/auth/verify-email/',
   '/auth/resend-verification/',
   '/auth/token/refresh/',
+  '/auth/password-reset/',
 ];
 
 http.interceptors.request.use(async (cfg) => {

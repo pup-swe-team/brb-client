@@ -96,6 +96,23 @@ export async function resendVerificationEmail(email: string): Promise<string> {
   return data.message;
 }
 
+export async function requestPasswordReset(email: string): Promise<string> {
+  if (USE_MOCK) return 'If that email is registered, a reset link has been sent.';
+  const { data } = await http.post<{ message?: string; detail?: string }>('/auth/password-reset/', { email });
+  return data.message ?? data.detail ?? 'If that email is registered, a reset link has been sent.';
+}
+
+export async function confirmPasswordReset(uid: string, token: string, password: string, passwordConfirm: string): Promise<string> {
+  if (USE_MOCK) return 'Your password has been reset.';
+  const { data } = await http.post<{ message?: string; detail?: string }>('/auth/password-reset/confirm/', {
+    uid,
+    token,
+    password,
+    password_confirm: passwordConfirm,
+  });
+  return data.message ?? data.detail ?? 'Your password has been reset.';
+}
+
 export async function logout(): Promise<void> {
   const refresh = await getRefreshToken();
   try {

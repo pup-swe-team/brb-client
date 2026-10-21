@@ -33,8 +33,10 @@ import ForgotPasswordScreen from '../features/auth/screens/ForgotPasswordScreen'
 import PasswordResetSentScreen from '../features/auth/screens/PasswordResetSentScreen';
 import TermsScreen from '../features/auth/screens/TermsScreen';
 import PrivacyScreen from '../features/auth/screens/PrivacyScreen';
+import NewPasswordScreen from '../features/auth/screens/NewPasswordScreen';
 import ItemDetailScreen from '../features/listings/screens/ItemDetailScreen';
 import AddItemScreen from '../features/listings/screens/AddItemScreen';
+import MyListingsScreen from '../features/listings/screens/MyListingsScreen';
 
 
 /* =========================================================
@@ -48,7 +50,7 @@ import { ComponentGallery } from '../features/gallery/ComponentGallery';
    LISTINGS
 ========================================================= */
 
-import SearchScreen from '../features/listings/screens/SearchScreen';
+import SearchScreen from '../features/search/screens/SearchScreen';
 
 /* =========================================================
    PROFILE
@@ -56,6 +58,13 @@ import SearchScreen from '../features/listings/screens/SearchScreen';
 
 import ProfileScreen from '../features/profile/screens/ProfileScreen';
 import VerifyIdentityScreen from '../features/profile/screens/VerifyIdentityScreen';
+import LenderProfileScreen from '../features/profile/screens/LenderProfileScreen';
+import AccountSettingsScreen from '../features/profile/screens/AccountSettingsScreen';
+import EditProfileScreen from '../features/profile/screens/EditProfileScreen';
+import ChangePasswordScreen from '../features/profile/screens/ChangePasswordScreen';
+import ChangeEmailScreen from '../features/profile/screens/ChangeEmailScreen';
+import NotificationPreferencesScreen from '../features/profile/screens/NotificationPreferencesScreen';
+import DeactivateAccountScreen from '../features/profile/screens/DeactivateAccountScreen';
 
 /* =========================================================
    SHARED
@@ -277,6 +286,7 @@ const linking = {
   config: {
     screens: {
       VerifyEmail: 'auth/verify-email',
+      NewPassword: 'auth/reset-password',
     },
   },
 };
@@ -368,6 +378,11 @@ export function RootNavigator() {
         />
 
         <Stack.Screen
+          name="NewPassword"
+          component={NewPasswordScreen}
+        />
+
+        <Stack.Screen
           name="Terms"
           component={TermsScreen}
         />
@@ -389,9 +404,45 @@ export function RootNavigator() {
           name="ItemDetail"
           component={ItemDetailScreen}
         />
-      <Stack.Screen
-        name="VerifyIdentity"
-        component={VerifyIdentityScreen}
+        <Stack.Screen
+          name="VerifyIdentity"
+          component={VerifyIdentityScreen}
+        />
+        <Stack.Screen
+          name="LenderProfile"
+          component={LenderProfileScreen}
+        />
+        <Stack.Screen
+          name="MyListings"
+          component={MyListingsScreen}
+        />
+        <Stack.Screen
+          name="EditListing"
+          component={AddItemScreen}
+        />
+        <Stack.Screen
+          name="AccountSettings"
+          component={AccountSettingsScreen}
+        />
+        <Stack.Screen
+          name="EditProfile"
+          component={EditProfileScreen}
+        />
+        <Stack.Screen
+          name="ChangePassword"
+          component={ChangePasswordScreen}
+        />
+        <Stack.Screen
+          name="ChangeEmail"
+          component={ChangeEmailScreen}
+        />
+        <Stack.Screen
+          name="NotificationPreferences"
+          component={NotificationPreferencesScreen}
+        />
+        <Stack.Screen
+          name="DeactivateAccount"
+          component={DeactivateAccountScreen}
         />
 
         {/* =================================================

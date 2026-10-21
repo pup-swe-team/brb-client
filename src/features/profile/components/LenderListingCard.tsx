@@ -2,15 +2,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme';
+import { CATEGORY_ICON, ListingCategory } from '../../listings/constants';
 import { LenderListing } from '../services/lenderTypes';
-
-const CATEGORY_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
-  Books: 'book-outline',
-  Equipment: 'construct-outline',
-  Clothing: 'shirt-outline',
-  Electronics: 'hardware-chip-outline',
-  'Lab Gear': 'flask-outline',
-};
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function fmt(d: string) {
@@ -24,7 +17,7 @@ export function LenderListingCard({ listing, onPress }: Props) {
   return (
     <Pressable style={s.card} onPress={() => onPress?.(listing)} accessibilityRole="button">
       <View style={s.icon}>
-        <Ionicons name={CATEGORY_ICON[listing.category] ?? 'cube-outline'} size={22} color={colors.primary} />
+        <Ionicons name={CATEGORY_ICON[listing.category as ListingCategory] ?? 'cube-outline'} size={22} color={colors.primary} />
       </View>
 
       <View style={s.info}>

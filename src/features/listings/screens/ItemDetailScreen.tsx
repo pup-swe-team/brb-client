@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,11 +17,16 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../../../theme';
 import { VerifiedLabel } from '../../../shared/components';
+import { useVerificationStatus } from '../../profile/hooks/useVerificationStatus';
+import { PublicLenderProfile, getLenderProfile } from '../../profile/services/lenderProfile';
+import { AvailabilityCalendar } from '../components/AvailabilityCalendar';
 
 type CalendarPickerProps = {
   visible: boolean;
   selectedDate: string;
   minDate?: string;
+  availableFrom?: string;
+  availableTo?: string;
   onClose: () => void;
   onSelect: (date: string) => void;
 };
@@ -28,14 +34,49 @@ type CalendarPickerProps = {
 export default function ItemDetailScreen({ navigation, route }: any) {
   const item = route?.params?.item ?? {};
 
-  const title = item.title || 'Concepts of Programming Languages';
-  const author = item.author || 'Tenth Edition by Robert W. Sebesta';
+  const title = item.title || 'Untitled listing';
+  const author = item.author || '';
   const price = item.price || '₱15 / day';
   const isFree = String(price).trim().toUpperCase() === 'FREE';
   const requestActionLabel = isFree ? 'Borrow' : 'Rent';
-  const image =
-    item.image ||
-    'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=900';
+  const photos: string[] =
+    item.photos?.length
+      ? item.photos
+      : [
+          item.image ||
+            'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=900',
+        ];
+  const { width: screenWidth } = useWindowDimensions();
+  const [photoIndex, setPhotoIndex] = useState(0);
+
+  // Availability window of this listing (YYYY-MM-DD). Missing = no restriction.
+  const availableFrom: string | undefined = item.availableFrom;
+  const availableTo: string | undefined = item.availableTo;
+  const lenderId: string | undefined = item.lenderId;
+
+  // Identity status decides whether the person may send a request.
+  const { status: verificationStatus, loading: statusLoading } = useVerificationStatus();
+
+  // Lender summary + reviews come from the lender's public profile.
+  const [lender, setLender] = useState<PublicLenderProfile | null>(null);
+  useEffect(() => {
+    if (!lenderId) return;
+    let active = true;
+    getLenderProfile(lenderId)
+      .then((p) => active && setLender(p))
+      .catch(() => {
+        // Keep the summary from the listing params.
+      });
+    return () => {
+      active = false;
+    };
+  }, [lenderId]);
+
+  const reviews = (lender?.reviews ?? []).filter((r) => r.itemTitle === title);
+  const reviewTotal = reviews.length;
+  const countFor = (stars: number) => reviews.filter((r) => r.rating === stars).length;
+  const barWidth = (stars: number): `${number}%` =>
+    `${reviewTotal ? Math.round((countFor(stars) / reviewTotal) * 100) : 0}%`;
 
   const [checkout, setCheckout] = useState('');
   const [returnDate, setReturnDate] = useState('');
@@ -68,9 +109,25 @@ export default function ItemDetailScreen({ navigation, route }: any) {
   };
 
   const openRequest = () => {
-    // Require identity verification before allowing a borrow/rent request.
-    setVerifyPromptVisible(true);
+    if (statusLoading) return;
+    // Only verified users can send a request.
+    if (verificationStatus !== 'Verified') {
+      setVerifyPromptVisible(true);
+      return;
+    }
+    if (!checkout || !returnDate) {
+      Alert.alert('Choose your dates', 'Pick a check-out and return date before sending a request.');
+      return;
+    }
+    setRequestVisible(true);
   };
+
+  const verifyCopy =
+    verificationStatus === 'Pending'
+      ? { title: 'Verification in review', message: 'Your ID is still being reviewed. You can request items once you are verified.', action: '' }
+      : verificationStatus === 'Rejected'
+        ? { title: 'Verification not approved', message: 'Your ID was not approved. Upload a new ID to request items.', action: 'Upload New ID' }
+        : { title: 'Verify your identity first', message: 'You need a verified account to request items. It only takes a few minutes.', action: 'Verify Now' };
 
   const confirmRequest = () => {
     if (!isFree && !paymentMethod.trim()) {
@@ -98,11 +155,25 @@ export default function ItemDetailScreen({ navigation, route }: any) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.imageSection}>
-          <Image
-            source={{ uri: image }}
-            style={styles.mainImage}
-            resizeMode="cover"
-          />
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={(e) =>
+              setPhotoIndex(
+                Math.round(e.nativeEvent.contentOffset.x / screenWidth),
+              )
+            }
+          >
+            {photos.map((uri, index) => (
+              <Image
+                key={`${index}-${uri}`}
+                source={{ uri }}
+                style={[styles.mainImage, { width: screenWidth }]}
+                resizeMode="cover"
+              />
+            ))}
+          </ScrollView>
 
           <Pressable
             style={styles.backButton}
@@ -117,7 +188,9 @@ export default function ItemDetailScreen({ navigation, route }: any) {
           </Pressable>
 
           <View style={styles.imageCount}>
-            <Text style={styles.imageCountText}>1/1</Text>
+            <Text style={styles.imageCountText}>
+              {photoIndex + 1}/{photos.length}
+            </Text>
           </View>
 
           <View style={styles.priceBadge}>
@@ -151,14 +224,13 @@ export default function ItemDetailScreen({ navigation, route }: any) {
             </Pressable>
           </View>
 
-          <Text style={styles.authorText}>{author}</Text>
+          {author ? <Text style={styles.authorText}>{author}</Text> : null}
         </View>
 
         <View style={styles.contentSection}>
           <View style={styles.programBadge}>
             <Text style={styles.programText}>
-              {item.category ||
-                'COSC 302 - Principles of Programming Languages'}
+              {item.category || 'General'}
             </Text>
           </View>
 
@@ -185,19 +257,33 @@ export default function ItemDetailScreen({ navigation, route }: any) {
           </View>
 
           <View style={styles.aboutSection}>
+            <Text style={styles.sectionTitle}>Availability</Text>
+            <AvailabilityCalendar
+              availableFrom={availableFrom}
+              availableTo={availableTo}
+              start={checkout}
+              end={returnDate}
+            />
+          </View>
+
+          <View style={styles.aboutSection}>
             <Text style={styles.sectionTitle}>About this Product</Text>
-            {(item.details || [
-              'Detail 1: Mint Condition',
-              'Detail 2: Has sticky notes in some pages',
-              'Detail 3: NO Plastic Cover',
-            ]).map((detail: string, index: number) => (
+            {(item.details ||
+              (item.description ? [item.description] : ['No description provided.'])
+            ).map((detail: string, index: number) => (
               <Text key={`${index}-${detail}`} style={styles.detailText}>
                 {detail}
               </Text>
             ))}
           </View>
 
-          <View style={styles.lenderCard}>
+          <Pressable
+            style={styles.lenderCard}
+            disabled={!lenderId}
+            onPress={() => navigation.navigate('LenderProfile', { lenderId })}
+            accessibilityRole={lenderId ? 'button' : undefined}
+            accessibilityLabel="View lender profile"
+          >
             <View style={styles.lenderAvatar}>
               <Ionicons
                 name="person"
@@ -208,53 +294,65 @@ export default function ItemDetailScreen({ navigation, route }: any) {
 
             <View style={styles.lenderInfo}>
               <VerifiedLabel
-                name={item.lenderName || 'Neo Ervine Y. Geroda'}
-                affiliation={item.affiliation || 'Student'}
-                verified={true}
+                name={lender?.fullName || item.lenderName || 'Lender'}
+                affiliation={lender?.affiliation || item.affiliation}
+                verified={lender?.verified ?? item.lenderVerified ?? item.verified ?? false}
               />
-              <Text style={styles.lenderYear}>
-                {item.lenderYear || 'BSCS 3rd Year'}
-              </Text>
+              {lender?.program || item.lenderYear ? (
+                <Text style={styles.lenderYear}>
+                  {lender?.program || item.lenderYear}
+                </Text>
+              ) : null}
               <View style={styles.ratingSmall}>
                 <Text style={styles.starText}>★</Text>
                 <Text style={styles.ratingText}>
-                  {item.lenderRating || '4.8 (20 reviews)'}
+                  {lender
+                    ? lender.reviewCount > 0
+                      ? `${lender.rating.toFixed(1)} (${lender.reviewCount} reviews)`
+                      : 'No ratings yet'
+                    : item.lenderRating || item.rating || 'No ratings yet'}
                 </Text>
               </View>
             </View>
-          </View>
+            {lenderId ? (
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={colors.textMuted}
+              />
+            ) : null}
+          </Pressable>
 
           <View style={styles.divider} />
 
           <Text style={styles.sectionTitle}>
-            Product Reviews <Text style={styles.reviewCount}>(6)</Text>
+            Product Reviews <Text style={styles.reviewCount}>({reviewTotal})</Text>
           </Text>
 
-          <RatingRow label="Five" count={4} width="80%" />
-          <RatingRow label="Four" count={1} width="25%" />
-          <RatingRow label="Three" count={1} width="20%" />
-          <RatingRow label="Two" count={0} width="0%" />
-          <RatingRow label="One" count={0} width="0%" />
+          {reviewTotal === 0 ? (
+            <Text style={styles.detailText}>No reviews for this item yet.</Text>
+          ) : (
+            <>
+              <RatingRow label="Five" count={countFor(5)} width={barWidth(5)} />
+              <RatingRow label="Four" count={countFor(4)} width={barWidth(4)} />
+              <RatingRow label="Three" count={countFor(3)} width={barWidth(3)} />
+              <RatingRow label="Two" count={countFor(2)} width={barWidth(2)} />
+              <RatingRow label="One" count={countFor(1)} width={barWidth(1)} />
 
-          <View style={styles.divider} />
+              <View style={styles.divider} />
 
-          <Text style={styles.sectionTitle}>Recent Feedbacks</Text>
+              <Text style={styles.sectionTitle}>Recent Feedbacks</Text>
 
-          <FeedbackCard
-            name="Faith Villeta"
-            rating={4}
-            message="Preferable if the book has protective cover, overall, good quality!"
-          />
-          <FeedbackCard
-            name="Anthea Espiritu"
-            rating={3}
-            message="Medyo may lukot on some pages when I got the book but it serves its purpose naman."
-          />
-          <FeedbackCard
-            name="Izzy Dancal"
-            rating={5}
-            message="OMG, tysm! Muntikan na ako ma-zero ni prof. kasi wala akong dalang book. 5/5!"
-          />
+              {reviews.map((r) => (
+                <FeedbackCard
+                  key={r.id}
+                  name={r.reviewerName}
+                  rating={r.rating}
+                  message={r.comment}
+                />
+              ))}
+            </>
+          )}
 
           <View style={styles.bottomSpace} />
         </View>
@@ -306,29 +404,32 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               />
             </View>
 
-            <Text style={styles.confirmTitle}>Verify your identity first</Text>
-            <Text style={styles.confirmMessage}>
-              You need a verified account to request items. It only takes a few
-              minutes.
-            </Text>
+            <Text style={styles.confirmTitle}>{verifyCopy.title}</Text>
+            <Text style={styles.confirmMessage}>{verifyCopy.message}</Text>
 
             <View style={styles.confirmActions}>
               <Pressable
                 style={styles.confirmCancel}
                 onPress={() => setVerifyPromptVisible(false)}
               >
-                <Text style={styles.confirmCancelText}>Not Now</Text>
+                <Text style={styles.confirmCancelText}>
+                  {verifyCopy.action ? 'Not Now' : 'OK'}
+                </Text>
               </Pressable>
 
-              <Pressable
-                style={styles.confirmButton}
-                onPress={() => {
-                  setVerifyPromptVisible(false);
-                  navigation.navigate('VerifyIdentity');
-                }}
-              >
-                <Text style={styles.confirmButtonText}>Verify Now</Text>
-              </Pressable>
+              {verifyCopy.action ? (
+                <Pressable
+                  style={styles.confirmButton}
+                  onPress={() => {
+                    setVerifyPromptVisible(false);
+                    navigation.navigate('VerifyIdentity');
+                  }}
+                >
+                  <Text style={styles.confirmButtonText}>
+                    {verifyCopy.action}
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         </View>
@@ -338,6 +439,8 @@ export default function ItemDetailScreen({ navigation, route }: any) {
         visible={calendarVisible}
         selectedDate={calendarTarget === 'checkout' ? checkout : returnDate}
         minDate={calendarTarget === 'return' ? checkout || undefined : undefined}
+        availableFrom={availableFrom}
+        availableTo={availableTo}
         onClose={() => setCalendarVisible(false)}
         onSelect={selectDate}
       />
@@ -384,7 +487,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
                   {title}
                 </Text>
                 <Text style={styles.requestItemSubtitle}>
-                  Lender: {item.lenderName || 'Neo Ervine Y. Geroda'}
+                  Lender: {lender?.fullName || item.lenderName || 'Lender'}
                 </Text>
                 <Text style={styles.requestItemSubtitle}>
                   {checkout} to {returnDate}
@@ -493,6 +596,8 @@ function CalendarPicker({
   visible,
   selectedDate,
   minDate,
+  availableFrom,
+  availableTo,
   onClose,
   onSelect,
 }: CalendarPickerProps) {
@@ -502,6 +607,11 @@ function CalendarPicker({
       return new Date(year, monthNumber - 1, 1);
     }
     const now = new Date();
+    // Open on the first month the item is available.
+    if (availableFrom && new Date(`${availableFrom}T00:00:00`) > now) {
+      const [year, monthNumber] = availableFrom.split('-').map(Number);
+      return new Date(year, monthNumber - 1, 1);
+    }
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [draftDate, setDraftDate] = useState(selectedDate);
@@ -527,7 +637,12 @@ function CalendarPicker({
 
   const isDisabled = (date: string) => {
     const parsed = new Date(`${date}T00:00:00`);
-    return parsed < today || (!!minDate && date < minDate);
+    return (
+      parsed < today ||
+      (!!minDate && date < minDate) ||
+      (!!availableFrom && date < availableFrom) ||
+      (!!availableTo && date > availableTo)
+    );
   };
 
   const days = Array.from(

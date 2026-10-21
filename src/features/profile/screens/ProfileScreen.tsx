@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -12,16 +12,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radius, spacing } from '../../../theme';
 import { ScreenContainer, AffiliationBadge } from '../../../shared/components';
-import {
-  VerificationStatus,
-  useVerificationGate,
-} from '../../../shared/hooks/useVerificationGate';
+import { useVerificationGate } from '../../../shared/hooks/useVerificationGate';
 import { getCurrentUser } from '../../auth/services/authService';
 import type { AuthUser } from '../../auth/services/authService';
-import {
-  getLatestIdentityDocumentStatus,
-  type IdentityDocumentStatus,
-} from '../services/verification';
+import { useVerificationStatus } from '../hooks/useVerificationStatus';
 
 type ItemStatus =
   | 'Requested'
@@ -170,21 +164,6 @@ function BorrowedItemCard({
   );
 }
 
-function toVerificationStatus(
-  status: IdentityDocumentStatus | undefined,
-): VerificationStatus {
-  switch (status) {
-    case 'pending':
-      return 'Pending';
-    case 'approved':
-      return 'Verified';
-    case 'rejected':
-      return 'Rejected';
-    default:
-      return 'Unverified';
-  }
-}
-
 export default function ProfileScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const [role, setRole] = useState<'Borrower' | 'Lender'>(
@@ -196,19 +175,22 @@ export default function ProfileScreen({ navigation }: any) {
   // the caller's own name and affiliation from the backend.
   const [user, setUser] = useState<AuthUser | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    getCurrentUser()
-      .then((account) => {
-        if (active) setUser(account);
-      })
-      .catch(() => {
-        if (active) setUser(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  // Refetched on focus so edits made in Edit Profile show up when returning.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getCurrentUser()
+        .then((account) => {
+          if (active) setUser(account);
+        })
+        .catch(() => {
+          if (active) setUser(null);
+        });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   const displayName = user?.full_name ?? '';
   const initials =
@@ -219,30 +201,9 @@ export default function ProfileScreen({ navigation }: any) {
       .map((word) => word[0]?.toUpperCase())
       .join('') || 'BRB';
 
-  // Real submission status from GET /identity/documents/list/ — the review
-  // loop: submit → admin approves/rejects → the status below reflects it.
-  // Refetched on focus so a submission made on VerifyIdentityScreen shows up
-  // as "Under review" right after returning to this tab.
-  const [verificationStatus, setVerificationStatus] =
-    useState<VerificationStatus>('Unverified');
-
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      getLatestIdentityDocumentStatus()
-        .then((status) => {
-          if (active) {
-            setVerificationStatus(toVerificationStatus(status));
-          }
-        })
-        .catch(() => {
-          // Non-fatal: keep the current value and refetch on the next focus.
-        });
-      return () => {
-        active = false;
-      };
-    }, []),
-  );
+  // Real submission status from GET /identity/documents/list/, refetched on focus
+  // so a submission made on VerifyIdentityScreen shows up right after returning.
+  const { status: verificationStatus } = useVerificationStatus();
 
   const { guard, gateModal } = useVerificationGate(verificationStatus);
   const isVerified = verificationStatus === 'Verified';
@@ -290,6 +251,8 @@ export default function ProfileScreen({ navigation }: any) {
           </Text>
           <Pressable
             style={styles.headerAction}
+            onPress={() => navigation.navigate('AccountSettings')}
+            accessibilityRole="button"
             accessibilityLabel="Profile settings"
           >
             <Ionicons
@@ -481,6 +444,34 @@ export default function ProfileScreen({ navigation }: any) {
                 <Text style={styles.applyText}>
                   Apply Now
                 </Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* MY LISTINGS */}
+          {role === 'Lender' && (
+            <View style={styles.lenderCard}>
+              <View style={styles.lenderIcon}>
+                <Ionicons
+                  name="albums-outline"
+                  size={23}
+                  color={colors.primary}
+                />
+              </View>
+
+              <View style={styles.lenderInfo}>
+                <Text style={styles.lenderTitle}>My Listings</Text>
+
+                <Text style={styles.lenderDescription}>
+                  Edit, deactivate or delete the items you lend
+                </Text>
+              </View>
+
+              <Pressable
+                style={styles.applyButton}
+                onPress={() => navigation.navigate('MyListings')}
+              >
+                <Text style={styles.applyText}>Manage</Text>
               </Pressable>
             </View>
           )}
