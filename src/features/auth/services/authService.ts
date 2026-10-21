@@ -1,4 +1,4 @@
-import { http, USE_MOCK, clearAuthTokens, extractApiError, getApiErrorCode, getRefreshToken, setAuthTokens } from '../../../services/http';
+import { http, USE_MOCK, clearAuthTokens, extractApiError, getApiErrorCode, getRefreshToken, refreshAccessToken, setAuthTokens } from '../../../services/http';
 import { loadListingOptions } from '../../listings/constants';
 
 export type Affiliation = 'Student' | 'Faculty' | 'Staff';
@@ -126,22 +126,21 @@ export async function confirmPasswordReset(uid: string, token: string, password:
 }
 
 export async function logout(): Promise<void> {
-  const refresh = await getRefreshToken();
   try {
-    if (!USE_MOCK && refresh) {
-      await http.post('/auth/logout/', { refresh });
+    if (!USE_MOCK) {
+      // /auth/logout/ needs a valid access token, and it blacklists the
+      // refresh token sent in the body. Refresh first so the token we hand
+      // over is the current one, otherwise the server-side session would stay
+      // alive after the user has left the app.
+      await refreshAccessToken();
+      const refresh = await getRefreshToken();
+      if (refresh) await http.post('/auth/logout/', { refresh });
     }
+  } catch {
+    // The session may already be gone; the local tokens are cleared below.
   } finally {
     await clearAuthTokens();
   }
 }
 
-export async function refreshAccessToken(): Promise<string | null> {
-  const refresh = await getRefreshToken();
-  if (!refresh) return null;
-  const { data } = await http.post<{ access: string }>('/auth/token/refresh/', { refresh });
-  await setAuthTokens(data.access);
-  return data.access;
-}
-
-export { extractApiError, getApiErrorCode };
+export { extractApiError, getApiErrorCode, refreshAccessToken };

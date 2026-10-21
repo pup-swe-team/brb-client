@@ -30,6 +30,24 @@ Auth tokens are stored via `expo-secure-store` (`src/services/http.ts`):
   by the axios request interceptor.
 - `brb_refresh_token` (JWT refresh, 7 days).
 
+**Token lifecycle (the access token expires after 15 minutes).** The backend
+rotates the refresh token on every use (`ROTATE_REFRESH_TOKENS`), and the
+token that was just spent is blacklisted. `http.ts` therefore keeps a response
+interceptor that, on a `401`:
+
+1. calls `POST /auth/token/refresh/` once (concurrent 401s share that one
+   call),
+2. stores **both** the new `access` and the rotated `refresh` — keeping only
+   the access token would blacklist the stored refresh token and break the
+   session at the next refresh,
+3. retries the original request with the new access token.
+
+Public endpoints and `/auth/logout/` are never retried this way. If the
+refresh itself fails, the stored tokens are cleared and the app falls back to
+the signed-out state. Without this interceptor the app breaks 15 minutes after
+login: every screen starts getting `401`, and the Add Item screen even claims
+the account is not verified, because the identity-status call fails too.
+
 ---
 
 ## Endpoints (backend contract)
@@ -42,7 +60,7 @@ Auth tokens are stored via `expo-secure-store` (`src/services/http.ts`):
 | POST | `/auth/verify-email/` | `uid, token` (from emailed link) | `{ detail }` |
 | POST | `/auth/login/` | `email, password` | `{ user, tokens: { access, refresh } }` |
 | GET | `/auth/me/` | — (auth) | current `user` (profile card data) |
-| POST | `/auth/token/refresh/` | `refresh` | `{ access }` |
+| POST | `/auth/token/refresh/` | `refresh` | `{ access, refresh }` — the refresh token is **rotated**: the old one is blacklisted the moment it is used, so the new one has to be stored |
 | POST | `/auth/logout/` | `refresh` | 204 (blacklists token) |
 | POST | `/auth/password-reset/` | `email` | generic `{ message }` (never says whether the address exists) |
 | POST | `/auth/password-reset/validate/` | `uid, token` | `{ valid: true }`; dead link → **400** `{ detail }` |
@@ -216,9 +234,9 @@ lender**; the window needs `start >= today` and `end >= start`.
    `linking` in `app.json`), so the flow stops at `VerifyEmailScreen`. Future
    work: an in-app link handler (or a "paste link" input) that calls
    `/auth/verify-email/` with `{ uid, token }`.
-2. **Refresh-token handling.** `authService.refreshAccessToken()` exists but
-   the axios interceptor does not yet retry a request once with a fresh access
-   token on 401. `http.ts` has a `// TODO` for this.
+2. ~~**Refresh-token handling.**~~ **Done.** `http.ts` now has a response
+   interceptor that refreshes on a 401, stores the rotated refresh token, and
+   retries the request. See *Token lifecycle* above.
 3. **My Listings.** `getMyListings()` throws — no owner-scoped feed exists on
    the backend (CP-203, Sprint 3).
 4. **Notification preferences** (`/auth/notification-preferences/`, CP-802) and
@@ -245,6 +263,9 @@ server** (not the test client), with the exact request shapes the client sends:
 - ✅ `/listings/` create (multipart, free + paid), detail, patch, deactivate,
   reactivate, delete
 - ✅ `/lenders/?q=` and `/lenders/<id>/`
+- ✅ token refresh: an expired access token (`401`) triggers one refresh, the
+  rotated refresh token is stored, and the original request is retried —
+  including parallel requests, which share the single refresh call
 
 Net-zero: all throwaway listings created during verification were deleted; the
 throwaway verified-lender account was removed from local SQLite.

@@ -344,4 +344,4 @@ Rules:
 
 See `docs/BACKEND_CONNECTION.md` for the endpoint contract, payloads, and the
 placeholders that still need work (my-listings feed, order/chat endpoints, deep
-links, refresh handling, and the `/auth/me/` bio/address echo gap).
+links, and the `/auth/me/` bio/address echo gap).

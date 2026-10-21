@@ -17,6 +17,7 @@ import {
   todayISO,
 } from '../constants';
 import { ManagedListing, createListing, updateListing } from '../services/listingsService';
+import { extractApiError } from '../../../services/http';
 
 const RED = '#B2080C';
 const TEXT = '#35415F';
@@ -162,7 +163,10 @@ export default function AddItemScreen({ navigation, route }: any) {
       if (editing) navigation.goBack();
       else navigation.navigate('MyListings');
     } catch (e: any) {
-      Alert.alert('Could not save', e?.message ?? 'Something went wrong. Please try again.');
+      // The API answers a rejected post with the reason ("This field may not
+      // be blank."). Showing the bare status code ("Request failed with
+      // status code 400") left the user with no idea what to fix.
+      Alert.alert('Could not save', extractApiError(e));
     } finally {
       setSaving(false);
     }

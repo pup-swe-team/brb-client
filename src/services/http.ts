@@ -1,4 +1,4 @@
-import { create, isAxiosError } from 'axios';
+import { create, isAxiosError, type InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
@@ -71,6 +71,70 @@ http.interceptors.request.use(async (cfg) => {
   }
   return cfg;
 });
+
+// --- automatic access-token refresh -----------------------------------------
+//
+// The backend issues short-lived access tokens (15 minutes) and rotates the
+// refresh token on every use. Without an automatic refresh the app starts
+// failing with 401s a quarter of an hour after login -- and because every
+// screen also asks the server about the account (identity status, category
+// and pickup lists), an expired token makes the app claim the account is not
+// verified even when it is.
+//
+// A 401 therefore triggers exactly one refresh, shared by all requests that
+// are waiting, and the original request is then retried with the new token.
+
+const NO_REFRESH_URLS = [...PUBLIC_ENDPOINTS, '/auth/logout/'];
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function requestNewAccessToken(): Promise<string | null> {
+  const refresh = await readItem(REFRESH_TOKEN_KEY);
+  if (!refresh) return null;
+  try {
+    const { data } = await http.post<{ access: string; refresh?: string }>('/auth/token/refresh/', { refresh });
+    // The server rotates refresh tokens: the one we just used is blacklisted
+    // the moment it is spent, so the new one has to be stored. Keeping only
+    // the access token would break the next refresh (and with it the whole
+    // session) 15 minutes later.
+    await setAuthTokens(data.access, data.refresh);
+    return data.access;
+  } catch {
+    // The session is over: the refresh token expired or was revoked. Drop the
+    // local tokens so the app falls back to the login screen.
+    await clearAuthTokens();
+    return null;
+  }
+}
+
+export function refreshAccessToken(): Promise<string | null> {
+  if (!refreshInFlight) {
+    refreshInFlight = requestNewAccessToken().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+http.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (!isAxiosError(error)) throw error;
+    const original = error.config as (InternalAxiosRequestConfig & { _brbRetried?: boolean }) | undefined;
+    if (!original || error.response?.status !== 401) throw error;
+    // Never retry the refresh call itself, a public endpoint, or logout (its
+    // body carries the refresh token that the refresh would rotate away).
+    if (original._brbRetried) throw error;
+    if (NO_REFRESH_URLS.some((p) => (original.url ?? '').includes(p))) throw error;
+
+    original._brbRetried = true;
+    const access = await refreshAccessToken();
+    if (!access) throw error;
+    // The request interceptor re-reads the token from storage, so the retry
+    // picks up the new access token by itself.
+    return http(original);
+  },
+);
 
 export async function getAccessToken(): Promise<string | null> {
   return readItem(TOKEN_KEY);
