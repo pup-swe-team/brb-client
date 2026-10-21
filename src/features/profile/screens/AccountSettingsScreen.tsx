@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme';
+import { ConfirmModal } from '../../../shared/components';
+import { logout } from '../../auth/services/authService';
 import { SettingsShell } from '../components/SettingsShell';
 
 type Row = { label: string; icon: keyof typeof Ionicons.glyphMap; route: string; danger?: boolean };
@@ -14,6 +16,24 @@ const ROWS: Row[] = [
 ];
 
 export default function AccountSettingsScreen({ navigation }: any) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+    } catch {
+      // The local tokens are cleared even if the server call fails.
+    } finally {
+      setLoggingOut(false);
+      setConfirmOpen(false);
+      // Reset the stack so Back can't return to the app after logging out.
+      navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+    }
+  };
+
   return (
     <SettingsShell title="Settings" onBack={() => navigation.goBack()}>
       <View style={s.list}>
@@ -24,7 +44,21 @@ export default function AccountSettingsScreen({ navigation }: any) {
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
         ))}
+
+        <Pressable style={[s.row, s.logout]} onPress={() => setConfirmOpen(true)} accessibilityRole="button">
+          <Ionicons name="log-out-outline" size={20} color={colors.primary} />
+          <Text style={s.label}>Log out</Text>
+        </Pressable>
       </View>
+
+      <ConfirmModal
+        visible={confirmOpen}
+        title="Log out?"
+        message="You will need to log in again to keep borrowing and lending."
+        confirmLabel={loggingOut ? 'Logging out…' : 'Log out'}
+        onConfirm={handleLogout}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </SettingsShell>
   );
 }
@@ -42,5 +76,6 @@ const s = StyleSheet.create({
     borderRadius: radius.card,
     paddingHorizontal: spacing.lg,
   },
+  logout: { marginTop: spacing.lg },
   label: { flex: 1, color: colors.text, fontSize: 14, fontWeight: '600' },
 });

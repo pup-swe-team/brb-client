@@ -71,7 +71,8 @@ export default function LoginScreen({
     setLoading(true);
     try {
       await login(trimmedEmail, password);
-      navigation.navigate('Tabs');
+      // Reset so Back from the app can't return to the login screen.
+      navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
     } catch (err) {
       // Unverified accounts go back to the verification prompt, not into the app.
       if (err instanceof UnverifiedEmailError) {
