@@ -5,6 +5,7 @@ export const colors = {
   textMuted: '#9BA3B8', textSecondary: '#5B6589', text: '#1A1F3A', textStrong: '#2F3A66',
   success: '#2FAF8F', warning: '#E8A63D', error: '#D14C5C', info: '#4B7BE5', link: '#4B7BE5',
   disabled: '#9BADD9', overlay: 'rgba(26,31,58,0.5)',
+  errorDark: '#A93A48', primarySoftPressed: '#F1E3E3',
 };
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 };
 export const radius = { input: 8, button: 8, card: 12, pill: 999 };

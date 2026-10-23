@@ -53,6 +53,7 @@ const listings: Array<{
   price: string;
   rating: string;
   image: string;
+  photos?: string[];
 }> = [
   {
     id: '1',
@@ -65,6 +66,11 @@ const listings: Array<{
     rating: '4.12',
     image:
       'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=600',
+    photos: [
+      'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=900',
+      'https://images.unsplash.com/photo-1593113646773-028c64a8f1b8?w=900',
+      'https://images.unsplash.com/photo-1516979187457-637abb4f9353?w=900',
+    ],
   },
   {
     id: '2',

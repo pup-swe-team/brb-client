@@ -23,7 +23,7 @@ import {
   verifyEmail,
 } from '../services/authService';
 
-function extractUidToken(raw: string): {
+export function extractUidToken(raw: string): {
   uid?: string;
   token?: string;
 } {
