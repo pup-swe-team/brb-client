@@ -12,6 +12,11 @@ import { Checkbox } from '../../../shared/components/Checkbox';
 import { IdDocumentType, submitIdDocument } from '../services/verification';
 
 const DOC_TYPES: IdDocumentType[] = ['PUP ID', 'Government ID'];
+
+// BE-BUG-2005: PUP IDs are printed as year-number-campus-check, e.g.
+// 2024-00123-MN-0. The campus code differs per branch, so only the dashed
+// shape is checked; the server enforces the same rule.
+const PUP_ID_NUMBER = /^\d{4}-\d{5}-[A-Z]{2}-\d$/;
 const CONSENT_LABEL =
   'I agree that my ID will be stored and used to help recover items if a borrowed item is lost or not returned.';
 
@@ -116,7 +121,12 @@ export default function VerifyIdentityScreen({ navigation }: any) {
     const next = {
       file: uri ? undefined : 'Upload a clear photo of your ID.',
       consent: consent ? undefined : 'You need to agree before submitting.',
-      idNumber: idNumber.trim().length >= 2 ? undefined : 'Enter the ID number printed on your ID.',
+      idNumber:
+        idNumber.trim().length < 2
+          ? 'Enter the ID number printed on your ID.'
+          : docType === 'PUP ID' && !PUP_ID_NUMBER.test(idNumber.trim().toUpperCase())
+            ? 'Use the PUP ID format, dashes included: 20xx-xxxxx-MN-x.'
+            : undefined,
       nameOnDocument: nameOnDocument.trim() ? undefined : 'Enter the name exactly as printed on your ID.',
     };
     setErrors(next);
@@ -217,7 +227,7 @@ export default function VerifyIdentityScreen({ navigation }: any) {
               setIdNumber(v);
               setErrors((e) => ({ ...e, idNumber: undefined }));
             }}
-            placeholder="e.g. 2024-00123"
+            placeholder="e.g. 2024-00123-MN-0"
             autoCapitalize="characters"
             autoCorrect={false}
           />

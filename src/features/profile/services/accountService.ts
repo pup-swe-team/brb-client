@@ -166,10 +166,8 @@ export async function deactivateAccount(password: string): Promise<void> {
   }
 
   try {
-    // The password is only used by the mock's pre-check; the real endpoint
-    // deactivates the caller's own account using the bearer token.
-    void password;
-    await http.post('/auth/deactivate/', {});
+    // BE-BUG-2004: the endpoint proves the password before closing the account.
+    await http.post('/auth/deactivate/', { password });
   } catch (e: any) {
     const data = e?.response?.data;
     if (e?.response?.status === 400 && data && (data.open_orders != null || data.open_unreturned_cases != null)) {
