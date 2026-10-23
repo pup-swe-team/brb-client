@@ -249,10 +249,10 @@ export default function VerifyIdentityScreen({ navigation }: any) {
           )}
           <View style={s.row}>
             <View style={{ flex: 1 }}>
-              <Button title="Choose photo" variant="secondary" onPress={() => pick('library')} />
+              <Button title="Choose photo" variant="secondary" compact onPress={() => pick('library')} />
             </View>
             <View style={{ flex: 1 }}>
-              <Button title="Take photo" variant="secondary" onPress={() => pick('camera')} />
+              <Button title="Take photo" variant="secondary" compact onPress={() => pick('camera')} />
             </View>
           </View>
           {errors.file ? <Text style={s.error}>{errors.file}</Text> : null}

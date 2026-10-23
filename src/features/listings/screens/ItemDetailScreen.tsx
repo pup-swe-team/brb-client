@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -15,6 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../../../theme';
 import { VerifiedLabel } from '../../../shared/components';
 import { useVerificationStatus } from '../../profile/hooks/useVerificationStatus';
@@ -31,8 +34,19 @@ type CalendarPickerProps = {
   onSelect: (date: string) => void;
 };
 
+function formatDisplayDate(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 export default function ItemDetailScreen({ navigation, route }: any) {
   const item = route?.params?.item ?? {};
+  const insets = useSafeAreaInsets();
 
   const title = item.title || 'Untitled listing';
   const author = item.author || '';
@@ -243,7 +257,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
                 onPress={() => openCalendar('checkout')}
               >
                 <Text style={styles.dateLabel}>{isFree ? "Borrow" : "Check-out"}</Text>
-                <Text style={styles.addDate}>{checkout || 'Add date'}</Text>
+                <Text style={styles.addDate}>{checkout ? formatDisplayDate(checkout) : 'Add date'}</Text>
               </Pressable>
 
               <Pressable
@@ -251,7 +265,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
                 onPress={() => openCalendar('return')}
               >
                 <Text style={styles.dateLabel}>Return</Text>
-                <Text style={styles.addDate}>{returnDate || 'Add date'}</Text>
+                <Text style={styles.addDate}>{returnDate ? formatDisplayDate(returnDate) : 'Add date'}</Text>
               </Pressable>
             </View>
           </View>
@@ -358,7 +372,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
         </View>
       </ScrollView>
 
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 6 }]}>
         <Pressable
           style={styles.chatButton}
           onPress={() =>
@@ -435,15 +449,17 @@ export default function ItemDetailScreen({ navigation, route }: any) {
         </View>
       </Modal>
 
-      <CalendarPicker
-        visible={calendarVisible}
-        selectedDate={calendarTarget === 'checkout' ? checkout : returnDate}
-        minDate={calendarTarget === 'return' ? checkout || undefined : undefined}
-        availableFrom={availableFrom}
-        availableTo={availableTo}
-        onClose={() => setCalendarVisible(false)}
-        onSelect={selectDate}
-      />
+      {calendarVisible ? (
+        <CalendarPicker
+          visible
+          selectedDate={calendarTarget === 'checkout' ? checkout : returnDate}
+          minDate={calendarTarget === 'return' ? checkout || undefined : undefined}
+          availableFrom={availableFrom}
+          availableTo={availableTo}
+          onClose={() => setCalendarVisible(false)}
+          onSelect={selectDate}
+        />
+      ) : null}
 
       <Modal
         visible={requestVisible}
@@ -451,7 +467,10 @@ export default function ItemDetailScreen({ navigation, route }: any) {
         animationType="fade"
         onRequestClose={() => setRequestVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <BlurView
             intensity={38}
             tint="dark"
@@ -467,6 +486,10 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               locations={[0, 0.52, 1]}
               style={StyleSheet.absoluteFill}
             />
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
             <View style={styles.modalHeading}>
               <Text style={styles.modalTitle}>
                 {isFree ? 'Request to Borrow' : 'Request to Rent'}
@@ -490,7 +513,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
                   Lender: {lender?.fullName || item.lenderName || 'Lender'}
                 </Text>
                 <Text style={styles.requestItemSubtitle}>
-                  {checkout} to {returnDate}
+                  {formatDisplayDate(checkout)} to {formatDisplayDate(returnDate)}
                 </Text>
               </View>
             </View>
@@ -539,8 +562,9 @@ export default function ItemDetailScreen({ navigation, route }: any) {
                 <Text style={styles.sendButtonText}>Send Request</Text>
               </Pressable>
             </View>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -616,14 +640,6 @@ function CalendarPicker({
   });
   const [draftDate, setDraftDate] = useState(selectedDate);
 
-  useEffect(() => {
-    setDraftDate(selectedDate);
-    if (selectedDate) {
-      const [year, monthNumber] = selectedDate.split('-').map(Number);
-      setMonth(new Date(year, monthNumber - 1, 1));
-    }
-  }, [selectedDate, visible]);
-
   const year = month.getFullYear();
   const monthIndex = month.getMonth();
   const firstDay = new Date(year, monthIndex, 1).getDay();
@@ -690,7 +706,7 @@ function CalendarPicker({
 </View>
 
           <Text style={styles.calendarPreview}>
-            {draftDate || 'Choose a date'}
+            {draftDate ? formatDisplayDate(draftDate) : 'Choose a date'}
           </Text>
 
           <View style={styles.monthHeader}>

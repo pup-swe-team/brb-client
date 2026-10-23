@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { isAxiosError } from 'axios';
 import { Button, Input, ScreenContainer } from '../../../shared/components';
 import { colors, spacing } from '../../../theme';
 import { confirmPasswordReset, extractApiError } from '../services/authService';
@@ -14,6 +15,9 @@ function passwordProblem(p: string): string | undefined {
   if (!/[^A-Za-z0-9]/.test(p)) return 'Add a special character.';
   return undefined;
 }
+
+const SIMILAR_PASSWORD_MSG = 'The password is too similar to the previous/current password.';
+const SIMILAR_PATTERN = /similar|same as|previous|current|old password|reuse|recently used/i;
 
 // Opened from the emailed link: brb://auth/reset-password?uid=...&token=...
 export default function NewPasswordScreen({ navigation, route }: any) {
@@ -38,7 +42,13 @@ export default function NewPasswordScreen({ navigation, route }: any) {
       await confirmPasswordReset(uid, token, password, confirm);
       setDone(true);
     } catch (err) {
-      setErrors({ submit: extractApiError(err) });
+      const data: any = isAxiosError(err) ? err.response?.data : null;
+      const raw = data && typeof data === 'object' ? JSON.stringify(data) : '';
+      if (SIMILAR_PATTERN.test(raw)) {
+        setErrors({ password: SIMILAR_PASSWORD_MSG });
+      } else {
+        setErrors({ submit: extractApiError(err) });
+      }
     } finally {
       setLoading(false);
     }

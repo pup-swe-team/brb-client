@@ -52,7 +52,7 @@ export default function ForgotPasswordScreen({
   };
 
   return (
-    <ScreenContainer auth>
+    <ScreenContainer auth scroll keyboardAware>
       <View style={styles.container}>
 
         {/* HEADER */}

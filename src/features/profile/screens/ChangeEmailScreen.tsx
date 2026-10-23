@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, text } from '../../../theme';
 import { Button, Input } from '../../../shared/components';
 import { extractApiError } from '../../../services/http';
 import { SettingsShell } from '../components/SettingsShell';
 import { requestEmailChange, resendEmailChangeVerification } from '../services/accountService';
+import { verifyEmail } from '../../auth/services/authService';
+import { extractUidToken } from '../../auth/screens/VerifyEmailScreen';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function isPupEmail(v: string) {
@@ -20,6 +22,10 @@ export default function ChangeEmailScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [resendMsg, setResendMsg] = useState('');
+  const [showPaste, setShowPaste] = useState(false);
+  const [linkInput, setLinkInput] = useState('');
+  const [linkError, setLinkError] = useState('');
+  const [verifying, setVerifying] = useState(false);
 
   const submit = async () => {
     const value = email.trim();
@@ -53,6 +59,25 @@ export default function ChangeEmailScreen({ navigation }: any) {
     }
   };
 
+  const submitLink = async () => {
+    const { uid, token } = extractUidToken(linkInput);
+    if (!uid || !token) {
+      setLinkError("Couldn't find uid and token in that link. Paste the full link from the verification email.");
+      return;
+    }
+    setLinkError('');
+    setVerifying(true);
+    try {
+      await verifyEmail(uid, token);
+      Alert.alert('Email verified', 'Your email address has been updated.');
+      navigation.goBack();
+    } catch (err) {
+      setLinkError(extractApiError(err));
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   return (
     <SettingsShell title="Change Email" onBack={() => navigation.goBack()}>
       {sentTo ? (
@@ -63,9 +88,25 @@ export default function ChangeEmailScreen({ navigation }: any) {
             We sent a verification link to {sentTo}. Your email will not change until you open the link. Until then, keep logging in with your current email.
           </Text>
           {resendMsg ? <Text style={text.caption}>{resendMsg}</Text> : null}
+          {showPaste ? (
+            <View style={{ alignSelf: 'stretch', gap: spacing.sm }}>
+              <Input
+                placeholder="https://…?uid=…&token=…"
+                value={linkInput}
+                onChangeText={(v) => { setLinkInput(v); setLinkError(''); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                error={linkError}
+              />
+              <Button title="Verify" onPress={submitLink} loading={verifying} />
+            </View>
+          ) : null}
           <View style={{ alignSelf: 'stretch', gap: spacing.sm }}>
+            {!showPaste ? (
+              <Button title="Paste verification link" onPress={() => setShowPaste(true)} />
+            ) : null}
             <Button title="Resend link" variant="secondary" onPress={resend} />
-            <Button title="Done" onPress={() => navigation.goBack()} />
+            <Button title="Done" variant="secondary" onPress={() => navigation.goBack()} />
           </View>
         </View>
       ) : (
