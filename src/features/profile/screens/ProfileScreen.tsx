@@ -467,17 +467,12 @@ export default function ProfileScreen({ navigation }: any) {
               <Pressable
                 style={[
                   styles.applyButton,
-                  applying && styles.applyButtonDisabled,
+                  styles.applyButtonDisabled,
                 ]}
-                disabled={applying}
-                onPress={() =>
-                  guard(() => {
-                    void applyLender();
-                  })
-                }
+                disabled={true}
               >
                 <Text style={styles.applyText}>
-                  {applying ? 'Applying...' : 'Apply Now'}
+                  Apply Now
                 </Text>
               </Pressable>
             </View>
