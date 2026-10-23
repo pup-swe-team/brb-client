@@ -243,7 +243,7 @@ export default function VerifyIdentityScreen({ navigation }: any) {
             <Image source={{ uri }} style={s.preview} resizeMode="cover" accessibilityLabel="ID preview" />
           ) : (
             <View style={s.placeholder}>
-              <Ionicons name="id-card-outline" size={30} color={colors.primary} />
+              <Ionicons name="id-card-outline" size={36} color={colors.primary} />
               <Text style={s.placeholderText}>No photo yet</Text>
             </View>
           )}
@@ -377,9 +377,9 @@ const s = StyleSheet.create({
     backgroundColor: colors.goldSoft,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: spacing.sm,
   },
-  placeholderText: { color: colors.textSecondary, fontSize: 10 },
+  placeholderText: { color: colors.textSecondary, fontSize: 12 },
   error: { color: colors.error, fontSize: 10 },
 
   /* DONE */
