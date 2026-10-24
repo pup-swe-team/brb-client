@@ -6,10 +6,18 @@ import { VerifiedLabel } from '../../../shared/components/VerifiedLabel';
 import { categoryIcon } from '../../listings/constants';
 import { Listing } from '../types';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function fmt(d: string) {
-  const [, m, day] = d.split('-');
-  return `${MONTHS[Number(m) - 1]} ${Number(day)}`;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// "Available Now" / "Available Later" instead of raw dates. A missing or
+// malformed date means no restriction on that side, so it never prints NaN.
+function availabilityLabel(from?: string, to?: string): string {
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const start = from && DATE_RE.test(from) ? from : '';
+  const end = to && DATE_RE.test(to) ? to : '';
+  if (start && start > today) return 'Available Later';
+  if (end && end < today) return 'Not available';
+  return 'Available Now';
 }
 
 type Props = { listing: Listing; onPress?: (listing: Listing) => void };
@@ -37,7 +45,7 @@ export function ListingResultCard({ listing, onPress }: Props) {
         </View>
 
         <Text style={s.dates} numberOfLines={1}>
-          Available {fmt(listing.availableFrom)} – {fmt(listing.availableTo)}
+          {availabilityLabel(listing.availableFrom, listing.availableTo)}
         </Text>
       </View>
 

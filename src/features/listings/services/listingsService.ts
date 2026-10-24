@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { http, USE_MOCK, extractApiError } from '../../../services/http';
 import { absoluteMediaUrl, toISODate } from '../../../services/api';
 import {
@@ -30,7 +31,10 @@ export type ManagedListing = {
   activeOrders: number; // Requested, Confirmed or Active orders on this listing
 };
 
-export type ListingInput = Omit<ManagedListing, 'id' | 'status' | 'activeOrders'>;
+export type ListingInput = Omit<ManagedListing, 'id' | 'status' | 'activeOrders'> & {
+  // On web the picker hands back a real File; native uses { uri, name, type }.
+  photoFiles?: (File | null | undefined)[];
+};
 
 export class ListingDeleteBlockedError extends Error {
   constructor() {
@@ -194,12 +198,28 @@ export async function getListingDetail(id: string): Promise<ListingDetail> {
 
 type PhotoPart = { uri: string; name: string; type: string };
 
-function photoParts(uris: string[]): PhotoPart[] {
-  return uris.map((uri, i) => {
-    const ext = (uri.split('.').pop() || 'jpg').toLowerCase();
-    const type = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-    return { uri, name: uri.split('/').pop() || `photo-${i}.${ext}`, type };
-  });
+async function photoParts(
+  uris: string[],
+  files?: (File | null | undefined)[],
+): Promise<(PhotoPart | File)[]> {
+  return Promise.all(
+    uris.map(async (uri, i) => {
+      const ext = (uri.split('.').pop() || 'jpg').toLowerCase();
+      const type = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+      const part: PhotoPart = { uri, name: uri.split('/').pop() || `photo-${i}.${ext}`, type };
+
+      if (Platform.OS !== 'web') return part;
+
+      // Browsers cannot upload React Native's { uri, name, type } shorthand;
+      // FormData needs a real File/Blob or the server receives "[object Object]".
+      const file = files?.[i];
+      if (file) return file;
+      const response = await fetch(uri);
+      if (!response.ok) throw new Error('Could not read one of the selected photos. Pick it again.');
+      const blob = await response.blob();
+      return new File([blob], part.name, { type: blob.type || part.type });
+    }),
+  );
 }
 
 // Backend wants a `[start, end]` window with start >= today and end >= start.
@@ -221,7 +241,7 @@ function todayISO(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function buildForm(input: ListingInput, opts: { includePhotos: boolean }): FormData {
+async function buildForm(input: ListingInput, opts: { includePhotos: boolean }): Promise<FormData> {
   const form = new FormData();
   form.append('title', input.title);
   form.append('description', input.description);
@@ -261,8 +281,8 @@ function buildForm(input: ListingInput, opts: { includePhotos: boolean }): FormD
   form.append('availability_windows', JSON.stringify([availabilityWindow(input)]));
 
   if (opts.includePhotos) {
-    for (const part of photoParts(input.photos)) {
-      // React Native sends file parts as { uri, name, type }.
+    for (const part of await photoParts(input.photos, input.photoFiles)) {
+      // Native sends file parts as { uri, name, type }; web sends File objects.
       form.append('photos', part as unknown as Blob);
     }
   }
@@ -289,7 +309,7 @@ export async function createListing(input: ListingInput): Promise<ManagedListing
     return created;
   }
 
-  const form = buildForm(input, { includePhotos: true });
+  const form = await buildForm(input, { includePhotos: true });
   const { data } = await http.post<ApiListing>('/listings/', form);
   return mapListing(data);
 }
@@ -303,7 +323,7 @@ export async function updateListing(id: string, input: ListingInput): Promise<vo
 
   // PATCH replaces photos only when new ones are supplied; the edit form always
   // carries the current photo set, so send them together.
-  const form = buildForm(input, { includePhotos: input.photos.length > 0 });
+  const form = await buildForm(input, { includePhotos: input.photos.length > 0 });
   await http.patch<ApiListing>(`/listings/${id}/`, form);
 }
 

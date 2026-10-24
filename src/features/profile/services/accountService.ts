@@ -58,8 +58,7 @@ export async function getAccountProfile(): Promise<AccountProfile> {
   const { data } = await http.get('/auth/me/');
   return {
     fullName: data.full_name ?? '',
-    // `photo` is not part of the /auth/me/ response yet, so avatars stay local.
-    photoUri: data.photo ?? null,
+  photoUri: data.photo_url ?? data.photo ?? null,
     contactNumber: data.contact_number ?? '',
     // The backend stores a structured address; expose the free-text street part.
     homeAddress: data.street_address ?? '',
@@ -68,7 +67,7 @@ export async function getAccountProfile(): Promise<AccountProfile> {
   };
 }
 
-export type ProfileUpdate = { fullName: string; contactNumber: string; homeAddress: string; bio: string; photoUri: string | null; photoChanged: boolean };
+export type ProfileUpdate = { fullName: string; contactNumber: string; homeAddress: string; bio: string; photoUri: string | null; photoChanged: boolean; photoFile?: File | { uri: string; name?: string; type?: string } | null };
 
 export async function updateProfile(p: ProfileUpdate): Promise<void> {
   if (USE_MOCK) {
@@ -76,9 +75,18 @@ export async function updateProfile(p: ProfileUpdate): Promise<void> {
     mockProfile = { ...mockProfile, fullName: p.fullName, contactNumber: p.contactNumber, homeAddress: p.homeAddress, bio: p.bio, photoUri: p.photoUri };
     return;
   }
-  // Only the free-text/phone fields map cleanly. `municipality`/`province` are
-  // FK ids the client cannot derive from a free-text address, and the profile
-  // photo has no upload endpoint yet, so neither is sent.
+
+  if (p.photoChanged && p.photoFile) {
+    const form = new FormData();
+    form.append('full_name', p.fullName);
+    form.append('contact_number', p.contactNumber);
+    form.append('bio', p.bio);
+    form.append('street_address', p.homeAddress);
+    form.append('photo', p.photoFile as unknown as Blob);
+    await http.patch('/auth/me/', form);
+    return;
+  }
+
   await http.patch('/auth/me/', {
     full_name: p.fullName,
     contact_number: p.contactNumber,
