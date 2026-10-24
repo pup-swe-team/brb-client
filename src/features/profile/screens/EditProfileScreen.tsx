@@ -20,6 +20,7 @@ export default function EditProfileScreen({ navigation }: any) {
   const [address, setAddress] = useState('');
   const [bio, setBio] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
+  const [photoAsset, setPhotoAsset] = useState<any>(null);
   const [photoChanged, setPhotoChanged] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
 
@@ -47,6 +48,7 @@ export default function EditProfileScreen({ navigation }: any) {
     if (!okType) return setErrors((e) => ({ ...e, photo: 'Use a JPEG, PNG or WEBP image.' }));
     if (a.fileSize != null && a.fileSize > 5 * 1024 * 1024) return setErrors((e) => ({ ...e, photo: 'The photo must be 5 MB or less.' }));
     setPhoto(a.uri);
+    setPhotoAsset({ uri: a.uri, name: a.fileName || a.uri.split('/').pop(), type: a.mimeType, fileSize: a.fileSize, file: (a as any).file });
     setPhotoChanged(true);
     setSaved(false);
     setErrors((e) => ({ ...e, photo: undefined }));
@@ -61,7 +63,8 @@ export default function EditProfileScreen({ navigation }: any) {
     setSaving(true);
     setSaved(false);
     try {
-      await updateProfile({ fullName: name.trim(), contactNumber: contact.trim(), homeAddress: address.trim(), bio: bio.trim(), photoUri: photo, photoChanged });
+      const photoFile = Platform.OS === 'web' ? photoAsset?.file ?? null : photoAsset ? { uri: photoAsset.uri, name: photoAsset.name, type: photoAsset.type } : null;
+      await updateProfile({ fullName: name.trim(), contactNumber: contact.trim(), homeAddress: address.trim(), bio: bio.trim(), photoUri: photo, photoChanged, photoFile });
       setPhotoChanged(false);
       setSaved(true);
     } catch (e) {
