@@ -27,7 +27,7 @@ const BG = '#F4F7FA';
 const WHITE = '#FFFFFF';
 const ERROR = '#F16C7A';
 
-type Photo = { uri: string; name: string; size?: number | null; mimeType?: string | null };
+type Photo = { uri: string; name: string; size?: number | null; mimeType?: string | null; file?: File | null };
 type Errors = { photos?: string[]; title?: string; description?: string; category?: string; pickup?: string; ownership?: string; price?: string; from?: string; until?: string };
 type OptionsState = 'loading' | 'ready' | 'error';
 
@@ -107,7 +107,7 @@ export default function AddItemScreen({ navigation, route }: any) {
       setShowErrors(true);
       return;
     }
-    setPhotos(v => [...v, { uri: asset.uri, name, size, mimeType: asset.mimeType }]);
+    setPhotos(v => [...v, { uri: asset.uri, name, size, mimeType: asset.mimeType, file: asset.file }]);
     setErrors(v => ({ ...v, photos: (v.photos || []).filter(e => !e.includes(name)) }));
   };
 
@@ -153,6 +153,7 @@ export default function AddItemScreen({ navigation, route }: any) {
       price: lendingType === 'Free Lending' ? '' : price.trim(), duration, availability,
       fromDate: availability === 'Available now' ? todayISO() : fromDate.trim(),
       untilDate: availability === 'Available now' ? '' : untilDate.trim(), pickup, photos: photos.map((p) => p.uri),
+      photoFiles: photos.map((p) => p.file),
     };
     setSaving(true);
     try {
