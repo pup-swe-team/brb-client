@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -228,6 +229,13 @@ export default function ProfileScreen({ navigation }: any) {
       .map((word) => word[0]?.toUpperCase())
       .join('') || 'BRB';
 
+    const photoUri =
+    typeof user?.photo_url === 'string' && user.photo_url
+      ? user.photo_url
+      : typeof user?.photo === 'string' && user.photo
+        ? user.photo
+        : '';
+
   // Real submission status from GET /identity/documents/list/, refetched on focus
   // so a submission made on VerifyIdentityScreen shows up right after returning.
   const { status: verificationStatus } = useVerificationStatus();
@@ -296,9 +304,17 @@ export default function ProfileScreen({ navigation }: any) {
         >
           {/* PROFILE INFORMATION */}
           <View style={styles.profileCard}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials}</Text>
-            </View>
+                        {photoUri ? (
+              <Image
+                source={{ uri: photoUri }}
+                style={styles.avatarImage}
+                resizeMode="cover"
+              />
+              ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{initials}</Text>
+              </View>
+            )}
 
             <View style={styles.profileInfo}>
               <Text style={styles.name}>
@@ -701,6 +717,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
+
+    avatarImage: {
+    width: 55,
+    height: 55,
+    borderRadius: 28,
+    marginRight: spacing.md,
+    backgroundColor: colors.border,
+    },
 
   avatarText: {
     color: colors.white,
