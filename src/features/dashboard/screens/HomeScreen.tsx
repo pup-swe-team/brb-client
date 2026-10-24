@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { colors, radius, spacing } from '../../../theme';
+import { VerifiedLabel, AffiliationType } from '../../../shared/components';
 
 
 /* =========================================================
@@ -42,21 +43,41 @@ const categories = [
    RECENTLY LISTED
 ========================================================= */
 
-const listings = [
+const listings: Array<{
+  id: string;
+  title: string;
+  owner: string;
+  affiliation: AffiliationType;
+  verified: boolean;
+  location: string;
+  price: string;
+  rating: string;
+  image: string;
+  photos?: string[];
+}> = [
   {
     id: '1',
     title: 'Laptop (i5 8th Gen)',
     owner: 'Jen Sta. Ana',
+    affiliation: 'Student',
+    verified: true,
     location: 'PUP CEA, Sta. Mesa, Manila',
     price: 'FREE',
     rating: '4.12',
     image:
       'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=600',
+    photos: [
+      'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=900',
+      'https://images.unsplash.com/photo-1593113646773-028c64a8f1b8?w=900',
+      'https://images.unsplash.com/photo-1516979187457-637abb4f9353?w=900',
+    ],
   },
   {
     id: '2',
     title: 'Concepts of Programming...',
     owner: 'Lawrence Aragon',
+    affiliation: 'Faculty',
+    verified: true,
     location: 'South, 5th Floor, PUP Main',
     price: '₱15 day',
     rating: '4.80',
@@ -67,6 +88,8 @@ const listings = [
     id: '3',
     title: 'T-Square',
     owner: 'J.B. Sucat',
+    affiliation: 'Student',
+    verified: true,
     location: 'PUP CEA, Sta. Mesa, Manila',
     price: '₱10 day',
     rating: '3.96',
@@ -77,6 +100,8 @@ const listings = [
     id: '4',
     title: 'Erlenmeyer Flask (250ml)',
     owner: 'Kim Santos',
+    affiliation: 'Faculty',
+    verified: true,
     location: 'South, 6th Floor, PUP Main',
     price: '₱5 day',
     rating: '3.88',
@@ -87,6 +112,8 @@ const listings = [
     id: '5',
     title: 'Yantok (For Arnis)',
     owner: 'Shan Adalman',
+    affiliation: 'Staff',
+    verified: true,
     location: 'CHK, PUP Main',
     price: 'FREE',
     rating: '4.20',
@@ -245,6 +272,19 @@ export default function HomeScreen({ navigation }: any) {
               <Pressable
                 key={item.id}
                 style={styles.card}
+                onPress={() =>
+                  navigation.navigate('ItemDetail', {
+                    item: {
+                      ...item,
+                      author: item.owner,
+                      lenderName: item.owner,
+                      image: item.image,
+                      price: item.price,
+                      title: item.title,
+                      category: 'General',
+                    },
+                  })
+                }
               >
 
                 {/* IMAGE */}
@@ -268,9 +308,14 @@ export default function HomeScreen({ navigation }: any) {
 
                 {/* OWNER */}
 
-                <Text style={styles.owner}>
-                  {item.owner}
-                </Text>
+                <View style={{ marginVertical: 3 }}>
+                  <VerifiedLabel
+                    name={item.owner}
+                    affiliation={item.affiliation}
+                    verified={item.verified}
+                    compact
+                  />
+                </View>
 
 
                 {/* LOCATION */}

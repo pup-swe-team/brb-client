@@ -2,6 +2,7 @@
   "expo": {
     "name": "brb-client",
     "slug": "brb-client",
+    "scheme": "brb",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -22,7 +23,16 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow BRB to access your photos so you can upload a photo of your ID.",
+          "cameraPermission": "Allow BRB to use your camera to take a photo of your ID.",
+          "microphonePermission": false
+        }
+      ]
     ]
   }
 }

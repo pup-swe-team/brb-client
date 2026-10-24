@@ -1,0 +1,408 @@
+import React, { useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { isAxiosError } from 'axios';
+
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { colors, radius, spacing } from '../../../theme';
+import { Button, Input, ScreenContainer } from '../../../shared/components';
+import { Checkbox } from '../../../shared/components/Checkbox';
+import { IdDocumentType, submitIdDocument } from '../services/verification';
+
+const DOC_TYPES: IdDocumentType[] = ['PUP ID', 'Government ID'];
+
+// BE-BUG-2005: PUP IDs are printed as year-number-campus-check, e.g.
+// 2024-00123-MN-0. The campus code differs per branch, so only the dashed
+// shape is checked; the server enforces the same rule.
+const PUP_ID_NUMBER = /^\d{4}-\d{5}-[A-Z]{2}-\d$/;
+const CONSENT_LABEL =
+  'I agree that my ID will be stored and used to help recover items if a borrowed item is lost or not returned.';
+
+function pickField(data: unknown, key: string): string | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const value = (data as Record<string, unknown>)[key];
+  if (Array.isArray(value) && value.length > 0) return String(value[0]);
+  if (typeof value === 'string' && value) return value;
+  return undefined;
+}
+
+function Shell({
+  title,
+  onBack,
+  children,
+}: {
+  title: string;
+  onBack: () => void;
+  children: React.ReactNode;
+}) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <ScreenContainer edges={['bottom']} padded={false} keyboardAware>
+      <View style={s.screen}>
+        <View style={[s.header, { paddingTop: insets.top }]}>
+          <View style={s.headerBar}>
+            <Pressable
+              onPress={onBack}
+              hitSlop={12}
+              style={s.backBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="arrow-back" size={20} color={colors.white} />
+            </Pressable>
+            <Text style={s.headerTitle}>{title}</Text>
+          </View>
+        </View>
+        {children}
+      </View>
+    </ScreenContainer>
+  );
+}
+
+export default function VerifyIdentityScreen({ navigation }: any) {
+  const [docType, setDocType] = useState<IdDocumentType>('PUP ID');
+  const [asset, setAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [consent, setConsent] = useState(false);
+  const [idNumber, setIdNumber] = useState('');
+  const [nameOnDocument, setNameOnDocument] = useState('');
+  const [errors, setErrors] = useState<{
+    file?: string;
+    consent?: string;
+    submit?: string;
+    idNumber?: string;
+    nameOnDocument?: string;
+  }>({});
+  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const uri = asset?.uri ?? null;
+
+  const pick = async (source: 'library' | 'camera') => {
+    // iOS throws MissingCameraPermissionException if launchCameraAsync runs
+    // without the permission having been requested first (BE-BUG-0005).
+    const cameraRequested = source === 'camera';
+    const permission = cameraRequested
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      const base =
+        cameraRequested
+          ? 'Camera access is needed to take a photo of your ID.'
+          : 'Photo library access is needed to choose a photo of your ID.';
+      setErrors((e) => ({
+        ...e,
+        file: permission.canAskAgain
+          ? base
+          : `${base} Turn it on in your device Settings.`,
+      }));
+      return;
+    }
+
+    const launch = cameraRequested ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
+    try {
+      const result = await launch({ mediaTypes: ['images'], quality: 0.8 });
+      if (!result.canceled) {
+        setAsset(result.assets[0]);
+        setErrors((e) => ({ ...e, file: undefined }));
+      }
+    } catch {
+      setErrors((e) => ({
+        ...e,
+        file: 'Could not open the camera. Please try again.',
+      }));
+    }
+  };
+
+  const submit = async () => {
+    const next = {
+      file: uri ? undefined : 'Upload a clear photo of your ID.',
+      consent: consent ? undefined : 'You need to agree before submitting.',
+      idNumber:
+        idNumber.trim().length < 2
+          ? 'Enter the ID number printed on your ID.'
+          : docType === 'PUP ID' && !PUP_ID_NUMBER.test(idNumber.trim().toUpperCase())
+            ? 'Use the PUP ID format, dashes included: 20xx-xxxxx-MN-x.'
+            : undefined,
+      nameOnDocument: nameOnDocument.trim() ? undefined : 'Enter the name exactly as printed on your ID.',
+    };
+    setErrors(next);
+    if (next.file || next.consent || next.idNumber || next.nameOnDocument || !uri || !asset) return;
+
+    setLoading(true);
+    try {
+      await submitIdDocument({
+        documentType: docType,
+        uri,
+        file: asset.file,
+        fileName: asset.fileName ?? undefined,
+        mimeType: asset.mimeType,
+        consent,
+        idNumber: idNumber.trim(),
+        nameOnDocument: nameOnDocument.trim(),
+      });
+      setSubmitted(true);
+    } catch (err) {
+      const data = isAxiosError(err) ? err.response?.data : null;
+      setErrors({
+        idNumber: pickField(data, 'id_number'),
+        nameOnDocument: pickField(data, 'name_on_document'),
+        file: pickField(data, 'document_file'),
+        consent: pickField(data, 'consent_given'),
+        submit:
+          pickField(data, 'email') ??
+          pickField(data, 'detail') ??
+          pickField(data, 'non_field_errors') ??
+          'Could not submit your ID. Check your connection and try again.',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (submitted) {
+    return (
+      <Shell title="Verify Identity" onBack={() => navigation.goBack()}>
+        <View style={s.doneWrap}>
+          <View style={s.doneIcon}>
+            <Ionicons name="checkmark" size={30} color={colors.white} />
+          </View>
+          <Text style={s.doneTitle}>ID submitted</Text>
+          <Text style={s.doneText}>
+            An admin will review it. Until you are verified, some actions stay blocked.
+          </Text>
+          <Button title="Back to profile" onPress={() => navigation.goBack()} />
+        </View>
+      </Shell>
+    );
+  }
+
+  return (
+    <Shell title="Verify Identity" onBack={() => navigation.goBack()}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={s.content}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* PRIVACY NOTE */}
+        <View style={s.noteCard}>
+          <View style={s.noteIcon}>
+            <Ionicons name="shield-checkmark-outline" size={23} color={colors.primary} />
+          </View>
+          <View style={s.noteInfo}>
+            <Text style={s.noteTitle}>Your ID stays private</Text>
+            <Text style={s.noteText}>
+              Other users only see that you are verified, never the document.
+            </Text>
+          </View>
+        </View>
+
+        {/* ID TYPE */}
+        <View>
+          <Text style={s.label}>ID type</Text>
+          <View style={s.segment}>
+            {DOC_TYPES.map((t) => (
+              <Pressable
+                key={t}
+                style={[s.segmentBtn, docType === t && s.segmentBtnActive]}
+                onPress={() => setDocType(t)}
+              >
+                <Text style={[s.segmentText, docType === t && s.segmentTextActive]}>{t}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        {/* ID DETAILS */}
+        <View style={s.card}>
+          <Input
+            label="ID number"
+            required
+            value={idNumber}
+            error={errors.idNumber}
+            onChangeText={(v) => {
+              setIdNumber(v);
+              setErrors((e) => ({ ...e, idNumber: undefined }));
+            }}
+            placeholder="e.g. 2024-00123-MN-0"
+            autoCapitalize="characters"
+            autoCorrect={false}
+          />
+          <Input
+            label="Name on the ID"
+            required
+            value={nameOnDocument}
+            error={errors.nameOnDocument}
+            onChangeText={(v) => {
+              setNameOnDocument(v);
+              setErrors((e) => ({ ...e, nameOnDocument: undefined }));
+            }}
+            placeholder="Exactly as printed on the ID"
+            autoCapitalize="words"
+            autoCorrect={false}
+          />
+        </View>
+
+        {/* UPLOAD */}
+        <View style={s.card}>
+          <Text style={s.label}>Photo of your ID</Text>
+          {uri ? (
+            <Image source={{ uri }} style={s.preview} resizeMode="cover" accessibilityLabel="ID preview" />
+          ) : (
+            <View style={s.placeholder}>
+              <Ionicons name="id-card-outline" size={36} color={colors.primary} />
+              <Text style={s.placeholderText}>No photo yet</Text>
+            </View>
+          )}
+          <View style={s.row}>
+            <View style={{ flex: 1 }}>
+              <Button title="Choose photo" variant="secondary" compact onPress={() => pick('library')} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button title="Take photo" variant="secondary" compact onPress={() => pick('camera')} />
+            </View>
+          </View>
+          {errors.file ? <Text style={s.error}>{errors.file}</Text> : null}
+        </View>
+
+        {/* CONSENT */}
+        <View style={s.card}>
+          <Checkbox
+            checked={consent}
+            onChange={(v) => {
+              setConsent(v);
+              setErrors((e) => ({ ...e, consent: undefined }));
+            }}
+            label={CONSENT_LABEL}
+            error={errors.consent}
+          />
+        </View>
+
+        {errors.submit ? <Text style={s.error}>{errors.submit}</Text> : null}
+        <Button title="Submit for verification" onPress={submit} loading={loading} />
+      </ScrollView>
+    </Shell>
+  );
+}
+
+const s = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+
+  header: {
+    width: '100%',
+    backgroundColor: colors.primary,
+  },
+  headerBar: {
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  backBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: { color: colors.white, fontSize: 14, fontWeight: '700' },
+
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xxl,
+    gap: spacing.md,
+  },
+
+  /* NOTE */
+  noteCard: {
+    backgroundColor: colors.goldSoft,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    borderRadius: radius.card,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  noteIcon: {
+    width: 43,
+    height: 43,
+    borderRadius: radius.input,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  noteInfo: { flex: 1 },
+  noteTitle: { color: colors.primary, fontSize: 12, fontWeight: '700', marginBottom: 4 },
+  noteText: { color: colors.textSecondary, fontSize: 10, lineHeight: 14 },
+
+  /* LABELS + SEGMENT */
+  label: { color: colors.text, fontSize: 12, fontWeight: '700', marginBottom: spacing.sm },
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: '#E8EBF0',
+    borderRadius: radius.button,
+    padding: 2,
+  },
+  segmentBtn: {
+    flex: 1,
+    height: 34,
+    borderRadius: radius.button,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentBtnActive: { backgroundColor: colors.primary },
+  segmentText: { color: colors.primaryDark, fontSize: 11, fontWeight: '600' },
+  segmentTextActive: { color: colors.white },
+
+  /* CARDS */
+  card: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.card,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  row: { flexDirection: 'row', gap: spacing.sm },
+  preview: {
+    width: '100%',
+    height: 190,
+    borderRadius: radius.input,
+    backgroundColor: colors.goldSoft,
+  },
+  placeholder: {
+    height: 150,
+    borderRadius: radius.input,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.goldSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  placeholderText: { color: colors.textSecondary, fontSize: 12 },
+  error: { color: colors.error, fontSize: 10 },
+
+  /* DONE */
+  doneWrap: { padding: spacing.lg, paddingTop: spacing.xxl, gap: spacing.md, alignItems: 'stretch' },
+  doneIcon: {
+    alignSelf: 'center',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doneTitle: { color: colors.text, fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  doneText: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, textAlign: 'center' },
+});

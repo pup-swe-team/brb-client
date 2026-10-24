@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -7,9 +7,19 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radius, spacing } from '../../../theme';
-import { ScreenContainer } from '../../../shared/components';
+import { ScreenContainer, AffiliationBadge } from '../../../shared/components';
+import { useVerificationGate } from '../../../shared/hooks/useVerificationGate';
+import {
+  applyForLenderRole,
+  extractApiError,
+  getCurrentUser,
+} from '../../auth/services/authService';
+import type { AuthUser } from '../../auth/services/authService';
+import { useVerificationStatus } from '../hooks/useVerificationStatus';
 
 type ItemStatus =
   | 'Requested'
@@ -158,10 +168,75 @@ function BorrowedItemCard({
   );
 }
 
-export default function ProfileScreen() {
-  const [role, setRole] = useState<'Borrower' | 'Lender'>(
-    'Borrower',
+export default function ProfileScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
+
+  // Real account details from GET /auth/me/ (BE-BUG-0002). The profile card
+  // used to hardcode a placeholder synonym (always "Student"); now it renders
+  // the caller's own name and affiliation from the backend.
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  // Which half of the profile is on screen. The role is a server-side fact
+  // (`lender_status`), so it is read from the account rather than toggled
+  // locally -- a Borrower must not be able to flip into the Lender view just
+  // by tapping a segment. `isLender` is the authority; the segment only
+  // chooses which view to show.
+  const [lenderView, setLenderView] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState('');
+
+  const isLender = user?.lender_status === 'active';
+
+  // Refetched on focus so edits made in Edit Profile show up when returning.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getCurrentUser()
+        .then((account) => {
+          if (active) setUser(account);
+        })
+        .catch(() => {
+          if (active) setUser(null);
+        });
+      return () => {
+        active = false;
+      };
+    }, []),
   );
+
+  const applyLender = useCallback(async () => {
+    if (applying) return;
+    setApplying(true);
+    setApplyError('');
+    try {
+      const updated = await applyForLenderRole();
+      setUser(updated);
+      setLenderView(true);
+    } catch (err) {
+      setApplyError(extractApiError(err));
+    } finally {
+      setApplying(false);
+    }
+  }, [applying]);
+
+  const displayName = user?.full_name ?? '';
+  const initials =
+    displayName
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((word) => word[0]?.toUpperCase())
+      .join('') || 'BRB';
+
+  // Real submission status from GET /identity/documents/list/, refetched on focus
+  // so a submission made on VerifyIdentityScreen shows up right after returning.
+  const { status: verificationStatus } = useVerificationStatus();
+
+  const { guard, gateModal } = useVerificationGate(verificationStatus);
+  const isVerified = verificationStatus === 'Verified';
+  const needsVerification =
+    verificationStatus === 'Unverified' ||
+    verificationStatus === 'Rejected';
 
   const requestedItems = items.filter(
     (item) => item.status === 'Requested',
@@ -186,13 +261,33 @@ export default function ProfileScreen() {
   );
 
   return (
-    <ScreenContainer>
+    // Full-bleed screen: the header handles the top inset and the tab bar
+    // handles the bottom one, so ScreenContainer adds neither (nor padding).
+    <ScreenContainer edges={[]} padded={false}>
       <View style={styles.screen}>
         {/* HEADER */}
-        <View style={styles.header}>
+        <View
+          style={[
+            styles.header,
+            { paddingTop: insets.top + spacing.md },
+          ]}
+        >
+          <View style={styles.headerSpacer} />
           <Text style={styles.headerTitle}>
             My Profile
           </Text>
+          <Pressable
+            style={styles.headerAction}
+            onPress={() => navigation.navigate('AccountSettings')}
+            accessibilityRole="button"
+            accessibilityLabel="Profile settings"
+          >
+            <Ionicons
+              name="settings-outline"
+              size={20}
+              color={colors.white}
+            />
+          </Pressable>
         </View>
 
         <ScrollView
@@ -202,30 +297,54 @@ export default function ProfileScreen() {
           {/* PROFILE INFORMATION */}
           <View style={styles.profileCard}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>AL</Text>
+              <Text style={styles.avatarText}>{initials}</Text>
             </View>
 
             <View style={styles.profileInfo}>
               <Text style={styles.name}>
-                Anthea Lyn Czeisler Espiritu
+                {displayName}
               </Text>
 
               <View style={styles.verifiedRow}>
-                <View style={styles.verifiedBadge}>
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={11}
-                    color={colors.white}
-                  />
+                {user?.affiliation ? (
+                  <AffiliationBadge affiliation={user.affiliation} />
+                ) : null}
+                {isVerified ? (
+                  <View style={styles.verifiedBadge}>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={11}
+                      color={colors.white}
+                    />
 
-                  <Text style={styles.verifiedText}>
-                    Verified
-                  </Text>
-                </View>
+                    <Text style={styles.verifiedText}>
+                      Verified
+                    </Text>
+                  </View>
+                ) : (
+                  <View
+                    style={[
+                      styles.verifiedBadge,
+                      { backgroundColor: colors.textMuted },
+                    ]}
+                  >
+                    <Ionicons
+                      name="alert-circle"
+                      size={11}
+                      color={colors.white}
+                    />
+
+                    <Text style={styles.verifiedText}>
+                      {verificationStatus === 'Pending'
+                        ? 'Under review'
+                        : 'Not verified'}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               <Text style={styles.affiliation}>
-                Student · BS in Computer Science 3rd Year
+                {user?.affiliation ?? ''}
               </Text>
 
               <View style={styles.ratingRow}>
@@ -247,15 +366,15 @@ export default function ProfileScreen() {
             <Pressable
               style={[
                 styles.roleButton,
-                role === 'Borrower' &&
+                !lenderView &&
                   styles.roleButtonActive,
               ]}
-              onPress={() => setRole('Borrower')}
+              onPress={() => setLenderView(false)}
             >
               <Text
                 style={[
                   styles.roleText,
-                  role === 'Borrower' &&
+                  !lenderView &&
                     styles.roleTextActive,
                 ]}
               >
@@ -266,15 +385,15 @@ export default function ProfileScreen() {
             <Pressable
               style={[
                 styles.roleButton,
-                role === 'Lender' &&
+                lenderView &&
                   styles.roleButtonActive,
               ]}
-              onPress={() => setRole('Lender')}
+              onPress={() => setLenderView(true)}
             >
               <Text
                 style={[
                   styles.roleText,
-                  role === 'Lender' &&
+                  lenderView &&
                     styles.roleTextActive,
                 ]}
               >
@@ -283,8 +402,44 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
+          {/* VERIFY IDENTITY */}
+          {needsVerification && (
+            <View style={styles.lenderCard}>
+              <View style={styles.lenderIcon}>
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={23}
+                  color={colors.primary}
+                />
+              </View>
+
+              <View style={styles.lenderInfo}>
+                <Text style={styles.lenderTitle}>
+                  {verificationStatus === 'Rejected'
+                    ? 'Verification not approved'
+                    : 'Verify your identity'}
+                </Text>
+
+                <Text style={styles.lenderDescription}>
+                  {verificationStatus === 'Rejected'
+                    ? 'Upload a new ID to try again'
+                    : 'Upload your ID to unlock borrowing and lending'}
+                </Text>
+              </View>
+
+              <Pressable
+                style={styles.applyButton}
+                onPress={() => navigation.navigate('VerifyIdentity')}
+              >
+                <Text style={styles.applyText}>
+                  Verify Now
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
           {/* BECOME A LENDER */}
-          {role === 'Borrower' && (
+          {!isLender && (
             <View style={styles.lenderCard}>
               <View style={styles.lenderIcon}>
                 <Ionicons
@@ -305,10 +460,48 @@ export default function ProfileScreen() {
                 </Text>
               </View>
 
-              <Pressable style={styles.applyButton}>
+              {applyError ? (
+                <Text style={styles.applyError}>{applyError}</Text>
+              ) : null}
+
+              <Pressable
+                style={[
+                  styles.applyButton,
+                  styles.applyButtonDisabled,
+                ]}
+                disabled={true}
+              >
                 <Text style={styles.applyText}>
                   Apply Now
                 </Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* MY LISTINGS */}
+          {isLender && (
+            <View style={styles.lenderCard}>
+              <View style={styles.lenderIcon}>
+                <Ionicons
+                  name="albums-outline"
+                  size={23}
+                  color={colors.primary}
+                />
+              </View>
+
+              <View style={styles.lenderInfo}>
+                <Text style={styles.lenderTitle}>My Listings</Text>
+
+                <Text style={styles.lenderDescription}>
+                  Edit, deactivate or delete the items you lend
+                </Text>
+              </View>
+
+              <Pressable
+                style={styles.applyButton}
+                onPress={() => navigation.navigate('MyListings')}
+              >
+                <Text style={styles.applyText}>Manage</Text>
               </Pressable>
             </View>
           )}
@@ -438,57 +631,54 @@ export default function ProfileScreen() {
 
           <View style={styles.bottomSpace} />
         </ScrollView>
+
+        {gateModal}
       </View>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  screen: {
     flex: 1,
     backgroundColor: colors.bg,
-    margin: 0,
-    padding: 0,
   },
-
-  screen: {
-  flex: 1,
-  width: '110%',
-  backgroundColor: colors.bg,
-  marginLeft: -spacing.lg,
-  marginRight: -spacing.lg,
-  padding: 0,
-},
-
-
 
   /* HEADER */
   header: {
     width: '100%',
-    height: 52,
     backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+
+  headerSpacer: {
+    width: 32,
+  },
+
+  headerAction: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   headerTitle: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  scroll: {
     flex: 1,
-    width: '100%',
-    margin: 0,
-    padding: 0,
+    textAlign: 'center',
+    color: colors.white,
+    fontSize: 18,
+    fontWeight: '700',
   },
 
   scrollContent: {
     width: '100%',
-    margin: 0,
-    padding: 0,
-    paddingBottom: 10,
+    paddingBottom: spacing.lg,
   },
 
   /* PROFILE */
@@ -531,6 +721,9 @@ const styles = StyleSheet.create({
 
   verifiedRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm - 2,
     marginBottom: 3,
   },
 
@@ -601,7 +794,7 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
 
-  /* LENDER CARD */
+  /* LENDER / VERIFY CARD */
   lenderCard: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
@@ -655,6 +848,17 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 9,
     fontWeight: '700',
+  },
+
+  applyButtonDisabled: {
+    opacity: 0.6,
+  },
+
+  applyError: {
+    color: colors.error,
+    fontSize: 11,
+    lineHeight: 15,
+    marginBottom: spacing.xs,
   },
 
   /* PROGRESS */
