@@ -129,3 +129,5 @@ const s = StyleSheet.create({
   error: { color: colors.error, fontSize: 12 },
   success: { color: colors.success, fontSize: 13, fontWeight: '600' },
 });
+
+import { Platform } from 'react-native';
