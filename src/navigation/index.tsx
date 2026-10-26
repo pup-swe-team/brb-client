@@ -38,6 +38,16 @@ import ItemDetailScreen from '../features/listings/screens/ItemDetailScreen';
 import AddItemScreen from '../features/listings/screens/AddItemScreen';
 import MyListingsScreen from '../features/listings/screens/MyListingsScreen';
 
+/* =========================================================
+   ORDERS + ADMIN (Sprint 3)
+========================================================= */
+
+import OrderDetailScreen from '../features/orders/screens/OrderDetailScreen';
+import HandoverCodeScreen from '../features/orders/screens/HandoverCodeScreen';
+import ReturnCodeScreen from '../features/orders/screens/ReturnCodeScreen';
+import ReportDamageScreen from '../features/orders/screens/ReportDamageScreen';
+import AdminCaseScreen from '../features/admin/screens/AdminCaseScreen';
+
 
 /* =========================================================
    DASHBOARD
@@ -443,6 +453,31 @@ export function RootNavigator() {
         <Stack.Screen
           name="DeactivateAccount"
           component={DeactivateAccountScreen}
+        />
+
+        {/* =================================================
+            ORDERS + ADMIN (Sprint 3)
+        ================================================= */}
+
+        <Stack.Screen
+          name="OrderDetail"
+          component={OrderDetailScreen}
+        />
+        <Stack.Screen
+          name="HandoverCode"
+          component={HandoverCodeScreen}
+        />
+        <Stack.Screen
+          name="ReturnCode"
+          component={ReturnCodeScreen}
+        />
+        <Stack.Screen
+          name="ReportDamage"
+          component={ReportDamageScreen}
+        />
+        <Stack.Screen
+          name="AdminCase"
+          component={AdminCaseScreen}
         />
 
         {/* =================================================

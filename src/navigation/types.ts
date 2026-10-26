@@ -39,6 +39,13 @@ export type RootStackParamList = {
   NotificationPreferences: undefined;
   DeactivateAccount: undefined;
 
+  // Sprint 3
+  OrderDetail: { orderId: string; role?: 'Borrower' | 'Lender' };
+  HandoverCode: { orderId: string; mode: 'show' | 'enter' };
+  ReturnCode: { orderId: string; mode: 'show' | 'enter' };
+  ReportDamage: { orderId: string };
+  AdminCase: { caseId: string };
+
   SignUpMessage: undefined;
 
   VerifyEmail:

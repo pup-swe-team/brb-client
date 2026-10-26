@@ -16,6 +16,8 @@ import { useVerificationGate } from '../../../shared/hooks/useVerificationGate';
 import { getCurrentUser } from '../../auth/services/authService';
 import type { AuthUser } from '../../auth/services/authService';
 import { useVerificationStatus } from '../hooks/useVerificationStatus';
+import { DashboardSwitch } from '../../dashboard/components/DashboardSwitch';
+import { LenderDashboard } from '../../dashboard/components/LenderDashboard';
 
 type ItemStatus =
   | 'Requested'
@@ -334,46 +336,8 @@ export default function ProfileScreen({ navigation }: any) {
             </View>
           </View>
 
-          {/* ROLE SWITCH */}
-          <View style={styles.roleContainer}>
-            <Pressable
-              style={[
-                styles.roleButton,
-                role === 'Borrower' &&
-                  styles.roleButtonActive,
-              ]}
-              onPress={() => setRole('Borrower')}
-            >
-              <Text
-                style={[
-                  styles.roleText,
-                  role === 'Borrower' &&
-                    styles.roleTextActive,
-                ]}
-              >
-                Borrower
-              </Text>
-            </Pressable>
-
-            <Pressable
-              style={[
-                styles.roleButton,
-                role === 'Lender' &&
-                  styles.roleButtonActive,
-              ]}
-              onPress={() => setRole('Lender')}
-            >
-              <Text
-                style={[
-                  styles.roleText,
-                  role === 'Lender' &&
-                    styles.roleTextActive,
-                ]}
-              >
-                Lender
-              </Text>
-            </Pressable>
-          </View>
+          {/* ROLE SWITCH (CP-203, Member A edits DashboardSwitch) */}
+          <DashboardSwitch role={role} onChange={setRole} />
 
           {/* VERIFY IDENTITY */}
           {needsVerification && (
@@ -448,50 +412,32 @@ export default function ProfileScreen({ navigation }: any) {
             </View>
           )}
 
-          {/* MY LISTINGS */}
+          {/* LENDER DASHBOARD (CP-203, Member A edits LenderDashboard) */}
           {role === 'Lender' && (
-            <View style={styles.lenderCard}>
-              <View style={styles.lenderIcon}>
-                <Ionicons
-                  name="albums-outline"
-                  size={23}
-                  color={colors.primary}
-                />
-              </View>
-
-              <View style={styles.lenderInfo}>
-                <Text style={styles.lenderTitle}>My Listings</Text>
-
-                <Text style={styles.lenderDescription}>
-                  Edit, deactivate or delete the items you lend
-                </Text>
-              </View>
-
-              <Pressable
-                style={styles.applyButton}
-                onPress={() => navigation.navigate('MyListings')}
-              >
-                <Text style={styles.applyText}>Manage</Text>
-              </Pressable>
-            </View>
+            <LenderDashboard navigation={navigation} />
           )}
 
-          {/* BORROWING PROGRESS */}
-          <View style={styles.progressCard}>
-            <View style={styles.progressHeader}>
-              <Text style={styles.progressTitle}>
-                Borrowing 2 of 3 items
-              </Text>
+          {/* BORROWER DASHBOARD (CP-201, Danielo) */}
+          {role === 'Borrower' && (
+            <>
+              {/* BORROWING PROGRESS */}
+              <View style={styles.progressCard}>
+                <View style={styles.progressHeader}>
+                  <Text style={styles.progressTitle}>
+                    Borrowing 2 of 3 items
+                  </Text>
 
-              <Text style={styles.progressLabel}>
-                Active and overdue
-              </Text>
-            </View>
+                  <Text style={styles.progressLabel}>
+                    Active and overdue
+                  </Text>
+                </View>
 
-            <View style={styles.progressTrack}>
-              <View style={styles.progressFill} />
-            </View>
-          </View>
+                <View style={styles.progressTrack}>
+                  <View style={styles.progressFill} />
+                </View>
+              </View>
+            </>
+          )}
 
           {/* NOTIFICATION */}
           <View style={styles.section}>
@@ -524,80 +470,84 @@ export default function ProfileScreen({ navigation }: any) {
             </Pressable>
           </View>
 
-          {/* REQUESTED */}
-          <View style={styles.section}>
-            <SectionTitle
-              title="Requested"
-              count={requestedItems.length}
-            />
+          {role === 'Borrower' && (
+            <>
+              {/* REQUESTED */}
+              <View style={styles.section}>
+                <SectionTitle
+                  title="Requested"
+                  count={requestedItems.length}
+                />
 
-            {requestedItems.map((item, index) => (
-              <BorrowedItemCard
-                key={`requested-${index}`}
-                item={item}
-              />
-            ))}
-          </View>
+                {requestedItems.map((item, index) => (
+                  <BorrowedItemCard
+                    key={`requested-${index}`}
+                    item={item}
+                  />
+                ))}
+              </View>
 
-          {/* CONFIRMED */}
-          <View style={styles.section}>
-            <SectionTitle
-              title="Confirmed"
-              count={confirmedItems.length}
-            />
+              {/* CONFIRMED */}
+              <View style={styles.section}>
+                <SectionTitle
+                  title="Confirmed"
+                  count={confirmedItems.length}
+                />
 
-            {confirmedItems.map((item, index) => (
-              <BorrowedItemCard
-                key={`confirmed-${index}`}
-                item={item}
-              />
-            ))}
-          </View>
+                {confirmedItems.map((item, index) => (
+                  <BorrowedItemCard
+                    key={`confirmed-${index}`}
+                    item={item}
+                  />
+                ))}
+              </View>
 
-          {/* ACTIVE */}
-          <View style={styles.section}>
-            <SectionTitle
-              title="Active"
-              count={activeItems.length}
-            />
+              {/* ACTIVE */}
+              <View style={styles.section}>
+                <SectionTitle
+                  title="Active"
+                  count={activeItems.length}
+                />
 
-            {activeItems.map((item, index) => (
-              <BorrowedItemCard
-                key={`active-${index}`}
-                item={item}
-              />
-            ))}
-          </View>
+                {activeItems.map((item, index) => (
+                  <BorrowedItemCard
+                    key={`active-${index}`}
+                    item={item}
+                  />
+                ))}
+              </View>
 
-          {/* OVERDUE */}
-          <View style={styles.section}>
-            <SectionTitle
-              title="Overdue"
-              count={overdueItems.length}
-            />
+              {/* OVERDUE */}
+              <View style={styles.section}>
+                <SectionTitle
+                  title="Overdue"
+                  count={overdueItems.length}
+                />
 
-            {overdueItems.map((item, index) => (
-              <BorrowedItemCard
-                key={`overdue-${index}`}
-                item={item}
-              />
-            ))}
-          </View>
+                {overdueItems.map((item, index) => (
+                  <BorrowedItemCard
+                    key={`overdue-${index}`}
+                    item={item}
+                  />
+                ))}
+              </View>
 
-          {/* PAST */}
-          <View style={styles.section}>
-            <SectionTitle
-              title="Past"
-              count={pastItems.length}
-            />
+              {/* PAST */}
+              <View style={styles.section}>
+                <SectionTitle
+                  title="Past"
+                  count={pastItems.length}
+                />
 
-            {pastItems.map((item, index) => (
-              <BorrowedItemCard
-                key={`past-${index}`}
-                item={item}
-              />
-            ))}
-          </View>
+                {pastItems.map((item, index) => (
+                  <BorrowedItemCard
+                    key={`past-${index}`}
+                    item={item}
+                  />
+                ))}
+              </View>
+            </>
+          )}
 
           <View style={styles.bottomSpace} />
         </ScrollView>
@@ -731,38 +681,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  /* ROLE */
-  roleContainer: {
-    flexDirection: 'row',
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
-    backgroundColor: '#E8EBF0',
-    borderRadius: radius.button,
-    padding: 2,
-  },
 
-  roleButton: {
-    flex: 1,
-    height: 31,
-    borderRadius: radius.button,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
-  roleButtonActive: {
-    backgroundColor: colors.primary,
-  },
 
-  roleText: {
-    color: colors.primaryDark,
-    fontSize: 10,
-    fontWeight: '600',
-  },
 
-  roleTextActive: {
-    color: colors.white,
-  },
 
   /* LENDER / VERIFY CARD */
   lenderCard: {
