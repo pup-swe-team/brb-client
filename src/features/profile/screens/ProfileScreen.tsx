@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,87 +12,87 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radius, spacing } from '../../../theme';
-import { ScreenContainer, AffiliationBadge } from '../../../shared/components';
+import {
+  ScreenContainer,
+  AffiliationBadge,
+  ConfirmModal,
+  EmptyState,
+  StatusBadge,
+} from '../../../shared/components';
+import type { Order, OrderStatus } from '../../../shared/types';
 import { useVerificationGate } from '../../../shared/hooks/useVerificationGate';
 import { getCurrentUser } from '../../auth/services/authService';
 import type { AuthUser } from '../../auth/services/authService';
 import { useVerificationStatus } from '../hooks/useVerificationStatus';
 import { DashboardSwitch } from '../../dashboard/components/DashboardSwitch';
 import { LenderDashboard } from '../../dashboard/components/LenderDashboard';
+import { OverdueIndicator } from '../../dashboard/components/OverdueIndicator';
+import { BORROWING_LIMIT, getMyOrders } from '../../orders/services/ordersService';
+import { applyForLenderRole, getLenderRoleStatus } from '../services/lenderRoleService';
 
-type ItemStatus =
-  | 'Requested'
-  | 'Confirmed'
-  | 'Active'
-  | 'Overdue'
-  | 'Completed'
-  | 'Declined';
-
-type BorrowedItem = {
-  title: string;
-  lender: string;
-  date: string;
-  status: ItemStatus;
-  statusColor: string;
-};
-
-const items: BorrowedItem[] = [
+// CP-201: Borrower dashboard sections, in display order (HTML 20).
+const SECTIONS: { title: string; statuses: OrderStatus[] }[] = [
+  { title: 'Requested', statuses: ['Requested'] },
+  { title: 'Confirmed', statuses: ['Confirmed'] },
+  { title: 'Active', statuses: ['Active'] },
+  { title: 'Overdue', statuses: ['Overdue', 'Unreturned'] },
   {
-    title: 'Basic Calculator',
-    lender: 'Danielo Kim R. Ang',
-    date: 'Feb. 2 – Feb. 5, 2026',
-    status: 'Requested',
-    statusColor: colors.gold,
-  },
-  {
-    title: 'Lab Coat (MEDIUM)',
-    lender: 'Neo Ervine Y. Geroda',
-    date: 'Jan. 28 – Jan. 31, 2026',
-    status: 'Confirmed',
-    statusColor: colors.success,
-  },
-  {
-    title: 'T-Square',
-    lender: 'Aaron Bien De Guzman',
-    date: 'Return: Jan. 30, 2026 · 3 days left',
-    status: 'Active',
-    statusColor: '#4C78E8',
-  },
-  {
-    title: 'Concepts of Programming Languages',
-    lender: 'John Ezekiel Lacap',
-    date: 'Due Jan. 24, 2026 · 3 days overdue',
-    status: 'Overdue',
-    statusColor: colors.error,
-  },
-  {
-    title: 'Basic Calculator',
-    lender: 'Princess Izzy Dancal',
-    date: 'Jan. 6 – Jan. 10, 2026',
-    status: 'Completed',
-    statusColor: colors.success,
-  },
-  {
-    title: 'T-Square',
-    lender: 'Felicity Faith Villeta',
-    date: 'Requested Jan. 18, 2026',
-    status: 'Declined',
-    statusColor: colors.error,
+    title: 'Past',
+    statuses: ['Completed', 'Declined', 'Expired', 'Cancelled', 'Returned', 'Disputed'],
   },
 ];
 
-function StatusBadge({
-  status,
-  color,
-}: {
-  status: ItemStatus;
-  color: string;
-}) {
-  return (
-    <View style={[styles.statusBadge, { backgroundColor: color }]}>
-      <Text style={styles.statusText}>{status}</Text>
-    </View>
-  );
+const MONTHS = [
+  'Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'June',
+  'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.',
+];
+
+function parseDay(iso: string) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return { y, m, d };
+}
+
+function formatDay(iso: string, withYear: boolean) {
+  const { y, m, d } = parseDay(iso);
+  const base = `${MONTHS[m - 1]} ${d}`;
+  return withYear ? `${base}, ${y}` : base;
+}
+
+function formatRange(start: string, end: string) {
+  const sameYear = parseDay(start).y === parseDay(end).y;
+  return `${formatDay(start, !sameYear)} – ${formatDay(end, true)}`;
+}
+
+// Whole days from today to the given yyyy-mm-dd date (negative when in the past).
+function daysUntil(iso: string) {
+  const { y, m, d } = parseDay(iso);
+  const now = new Date();
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((Date.UTC(y, m - 1, d) - today) / 86400000);
+}
+
+function dayCount(n: number) {
+  return `${n} ${n === 1 ? 'day' : 'days'}`;
+}
+
+function dateLine(order: Order) {
+  switch (order.status) {
+    case 'Active': {
+      const left = daysUntil(order.endDate);
+      const base = `Return: ${formatDay(order.endDate, true)}`;
+      return left >= 0 ? `${base} · ${dayCount(left)} left` : base;
+    }
+    case 'Declined':
+    case 'Expired':
+      return `Requested ${formatDay(order.startDate, true)}`;
+    default:
+      return formatRange(order.startDate, order.endDate);
+  }
+}
+
+function overdueDetail(order: Order) {
+  const late = Math.max(1, -daysUntil(order.endDate));
+  return `Due ${formatDay(order.endDate, true)} · ${dayCount(late)} overdue`;
 }
 
 function SectionTitle({
@@ -113,12 +114,19 @@ function SectionTitle({
 }
 
 function BorrowedItemCard({
-  item,
+  order,
+  onPress,
 }: {
-  item: BorrowedItem;
+  order: Order;
+  onPress: () => void;
 }) {
   return (
-    <Pressable style={styles.itemCard}>
+    <Pressable
+      style={styles.itemCard}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${order.listingTitle}, ${order.status}`}
+    >
       <View style={styles.itemIcon}>
         <Ionicons
           name="document-text-outline"
@@ -132,29 +140,35 @@ function BorrowedItemCard({
           style={styles.itemTitle}
           numberOfLines={2}
         >
-          {item.title}
+          {order.listingTitle}
         </Text>
 
         <Text
           style={styles.itemLender}
           numberOfLines={1}
         >
-          from {item.lender}
+          from {order.counterpart}
         </Text>
 
-        <Text
-          style={styles.itemDate}
-          numberOfLines={2}
-        >
-          {item.date}
-        </Text>
+        {order.status === 'Overdue' || order.status === 'Unreturned' ? (
+          <OverdueIndicator
+            status={order.status}
+            detail={overdueDetail(order)}
+          />
+        ) : (
+          <Text
+            style={styles.itemDate}
+            numberOfLines={2}
+          >
+            {dateLine(order)}
+          </Text>
+        )}
       </View>
 
       <View style={styles.itemRight}>
-        <StatusBadge
-          status={item.status}
-          color={item.statusColor}
-        />
+        <View style={styles.itemBadge}>
+          <StatusBadge status={order.status} />
+        </View>
 
         <Ionicons
           name="chevron-forward"
@@ -194,6 +208,82 @@ export default function ProfileScreen({ navigation }: any) {
     }, []),
   );
 
+  // CP-201: the signed-in user's Borrower orders. null = not loaded yet.
+  const [orders, setOrders] = useState<Order[] | null>(null);
+  const [ordersError, setOrdersError] = useState('');
+
+  const fetchOrders = useCallback(() => {
+    let active = true;
+    getMyOrders('Borrower')
+      .then((loaded) => {
+        if (active) {
+          setOrders(loaded);
+          setOrdersError('');
+        }
+      })
+      .catch(() => {
+        if (active) setOrdersError('We couldn’t load your orders. Please try again.');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Reloaded on focus so a cancelled order or a new request shows up on return.
+  useFocusEffect(fetchOrders);
+
+  const retryOrders = () => {
+    setOrdersError('');
+    setOrders(null);
+    fetchOrders();
+  };
+
+  // CP-1003: Lender role application. null = status not known yet (card hidden).
+  const [isLender, setIsLender] = useState<boolean | null>(null);
+  const [applyOpen, setApplyOpen] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState('');
+  const [applyMessage, setApplyMessage] = useState('');
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getLenderRoleStatus()
+        .then(({ isLender: lender }) => {
+          if (active) setIsLender(lender);
+        })
+        .catch(() => {
+          if (active) setIsLender(null);
+        });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  // The success message disappears on its own.
+  useEffect(() => {
+    if (!applyMessage) return;
+    const timer = setTimeout(() => setApplyMessage(''), 4000);
+    return () => clearTimeout(timer);
+  }, [applyMessage]);
+
+  const handleApply = async () => {
+    setApplyOpen(false);
+    setApplying(true);
+    setApplyError('');
+    try {
+      await applyForLenderRole();
+      setIsLender(true);
+      setApplyMessage('You’re now a Lender. You can start posting items.');
+      setRole('Lender');
+    } catch {
+      setApplyError('We couldn’t submit your application. Please try again.');
+    } finally {
+      setApplying(false);
+    }
+  };
+
   const displayName = user?.full_name ?? '';
   const initials =
     displayName
@@ -213,27 +303,12 @@ export default function ProfileScreen({ navigation }: any) {
     verificationStatus === 'Unverified' ||
     verificationStatus === 'Rejected';
 
-  const requestedItems = items.filter(
-    (item) => item.status === 'Requested',
-  );
-
-  const confirmedItems = items.filter(
-    (item) => item.status === 'Confirmed',
-  );
-
-  const activeItems = items.filter(
-    (item) => item.status === 'Active',
-  );
-
-  const overdueItems = items.filter(
-    (item) => item.status === 'Overdue',
-  );
-
-  const pastItems = items.filter(
-    (item) =>
-      item.status === 'Completed' ||
-      item.status === 'Declined',
-  );
+  // Borrowing limit counts Active and Overdue orders (HTML 20, 43).
+  const borrowingCount = (orders ?? []).filter(
+    (order) => order.status === 'Active' || order.status === 'Overdue',
+  ).length;
+  const atLimit = borrowingCount >= BORROWING_LIMIT;
+  const fillPercent = Math.min(100, (borrowingCount / BORROWING_LIMIT) * 100);
 
   return (
     // Full-bleed screen: the header handles the top inset and the tab bar
@@ -339,6 +414,35 @@ export default function ProfileScreen({ navigation }: any) {
           {/* ROLE SWITCH (CP-203, Member A edits DashboardSwitch) */}
           <DashboardSwitch role={role} onChange={setRole} />
 
+          {/* LENDER APPLICATION RESULT (CP-1003) */}
+          {applyMessage ? (
+            <View
+              style={[styles.banner, { borderColor: colors.success }]}
+              accessibilityRole="alert"
+            >
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={16}
+                color={colors.success}
+              />
+              <Text style={styles.bannerText}>{applyMessage}</Text>
+            </View>
+          ) : null}
+
+          {applyError ? (
+            <View
+              style={[styles.banner, { borderColor: colors.error }]}
+              accessibilityRole="alert"
+            >
+              <Ionicons
+                name="alert-circle-outline"
+                size={16}
+                color={colors.error}
+              />
+              <Text style={styles.bannerText}>{applyError}</Text>
+            </View>
+          ) : null}
+
           {/* VERIFY IDENTITY */}
           {needsVerification && (
             <View style={styles.lenderCard}>
@@ -376,7 +480,7 @@ export default function ProfileScreen({ navigation }: any) {
           )}
 
           {/* BECOME A LENDER */}
-          {role === 'Borrower' && (
+          {role === 'Borrower' && isLender === false && (
             <View style={styles.lenderCard}>
               <View style={styles.lenderIcon}>
                 <Ionicons
@@ -398,16 +502,24 @@ export default function ProfileScreen({ navigation }: any) {
               </View>
 
               <Pressable
-                style={styles.applyButton}
+                style={[styles.applyButton, applying && styles.applyButtonBusy]}
                 onPress={() =>
                   guard(() => {
-                    // TODO: open the lender application once that flow exists.
+                    setApplyError('');
+                    setApplyOpen(true);
                   })
                 }
+                disabled={applying}
+                accessibilityRole="button"
+                accessibilityState={{ busy: applying, disabled: applying }}
               >
-                <Text style={styles.applyText}>
-                  Apply Now
-                </Text>
+                {applying ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <Text style={styles.applyText}>
+                    Apply Now
+                  </Text>
+                )}
               </Pressable>
             </View>
           )}
@@ -421,21 +533,47 @@ export default function ProfileScreen({ navigation }: any) {
           {role === 'Borrower' && (
             <>
               {/* BORROWING PROGRESS */}
-              <View style={styles.progressCard}>
-                <View style={styles.progressHeader}>
-                  <Text style={styles.progressTitle}>
-                    Borrowing 2 of 3 items
-                  </Text>
+              {orders !== null && (
+                <View style={styles.progressCard}>
+                  <View style={styles.progressHeader}>
+                    <Text style={styles.progressTitle}>
+                      Borrowing {borrowingCount} of {BORROWING_LIMIT} items
+                    </Text>
 
-                  <Text style={styles.progressLabel}>
-                    Active and overdue
-                  </Text>
-                </View>
+                    <Text style={styles.progressLabel}>
+                      Active and overdue
+                    </Text>
+                  </View>
 
-                <View style={styles.progressTrack}>
-                  <View style={styles.progressFill} />
+                  <View style={styles.progressTrack}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        {
+                          width: `${fillPercent}%`,
+                          backgroundColor: atLimit
+                            ? colors.error
+                            : colors.primary,
+                        },
+                      ]}
+                    />
+                  </View>
+
+                  {atLimit && (
+                    <View style={styles.limitRow}>
+                      <Ionicons
+                        name="alert-circle-outline"
+                        size={12}
+                        color={colors.error}
+                      />
+
+                      <Text style={styles.limitText}>
+                        Limit reached
+                      </Text>
+                    </View>
+                  )}
                 </View>
-              </View>
+              )}
             </>
           )}
 
@@ -472,80 +610,57 @@ export default function ProfileScreen({ navigation }: any) {
 
           {role === 'Borrower' && (
             <>
-              {/* REQUESTED */}
-              <View style={styles.section}>
-                <SectionTitle
-                  title="Requested"
-                  count={requestedItems.length}
+              {ordersError ? (
+                <EmptyState
+                  icon="alert-circle-outline"
+                  title="Orders unavailable"
+                  message={ordersError}
+                  actionLabel="Try Again"
+                  onAction={retryOrders}
                 />
-
-                {requestedItems.map((item, index) => (
-                  <BorrowedItemCard
-                    key={`requested-${index}`}
-                    item={item}
-                  />
-                ))}
-              </View>
-
-              {/* CONFIRMED */}
-              <View style={styles.section}>
-                <SectionTitle
-                  title="Confirmed"
-                  count={confirmedItems.length}
+              ) : orders === null ? (
+                <ActivityIndicator
+                  color={colors.primary}
+                  style={styles.loader}
                 />
-
-                {confirmedItems.map((item, index) => (
-                  <BorrowedItemCard
-                    key={`confirmed-${index}`}
-                    item={item}
-                  />
-                ))}
-              </View>
-
-              {/* ACTIVE */}
-              <View style={styles.section}>
-                <SectionTitle
-                  title="Active"
-                  count={activeItems.length}
+              ) : orders.length === 0 ? (
+                <EmptyState
+                  icon="file-tray-outline"
+                  title="No orders yet"
+                  message="Items you request will show up here."
+                  actionLabel="Browse Items"
+                  onAction={() => navigation.navigate('Search')}
                 />
+              ) : (
+                SECTIONS.map(({ title, statuses }) => {
+                  const group = orders.filter((order) =>
+                    statuses.includes(order.status),
+                  );
+                  if (group.length === 0) return null;
 
-                {activeItems.map((item, index) => (
-                  <BorrowedItemCard
-                    key={`active-${index}`}
-                    item={item}
-                  />
-                ))}
-              </View>
+                  return (
+                    <View key={title} style={styles.section}>
+                      <SectionTitle
+                        title={title}
+                        count={group.length}
+                      />
 
-              {/* OVERDUE */}
-              <View style={styles.section}>
-                <SectionTitle
-                  title="Overdue"
-                  count={overdueItems.length}
-                />
-
-                {overdueItems.map((item, index) => (
-                  <BorrowedItemCard
-                    key={`overdue-${index}`}
-                    item={item}
-                  />
-                ))}
-              </View>
-
-              {/* PAST */}
-              <View style={styles.section}>
-                <SectionTitle
-                  title="Past"
-                  count={pastItems.length}
-                />
-
-                {pastItems.map((item, index) => (
-                  <BorrowedItemCard
-                    key={`past-${index}`}
-                    item={item}
-                  />
-                ))}
-              </View>
+                      {group.map((order) => (
+                        <BorrowedItemCard
+                          key={order.id}
+                          order={order}
+                          onPress={() =>
+                            navigation.navigate('OrderDetail', {
+                              orderId: order.id,
+                              role: 'Borrower',
+                            })
+                          }
+                        />
+                      ))}
+                    </View>
+                  );
+                })
+              )}
             </>
           )}
 
@@ -553,6 +668,15 @@ export default function ProfileScreen({ navigation }: any) {
         </ScrollView>
 
         {gateModal}
+
+        <ConfirmModal
+          visible={applyOpen}
+          title="Apply for Lender role?"
+          message="You’ll be able to post items and lend them to other Iskolars. You can still borrow as usual."
+          confirmLabel="Apply"
+          onConfirm={handleApply}
+          onCancel={() => setApplyOpen(false)}
+        />
       </View>
     </ScreenContainer>
   );
@@ -736,6 +860,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  applyButtonBusy: {
+    opacity: 0.7,
+  },
+
   applyText: {
     color: colors.white,
     fontSize: 9,
@@ -781,10 +909,46 @@ const styles = StyleSheet.create({
   },
 
   progressFill: {
-    width: '67%',
     height: '100%',
     backgroundColor: colors.primary,
     borderRadius: radius.button,
+  },
+
+  limitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+
+  limitText: {
+    color: colors.error,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  /* APPLY RESULT BANNER */
+  banner: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderRadius: radius.card,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+
+  bannerText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 10,
+    lineHeight: 14,
+  },
+
+  loader: {
+    marginTop: spacing.xxl,
   },
 
   /* SECTIONS */
@@ -913,18 +1077,8 @@ const styles = StyleSheet.create({
     marginLeft: spacing.xs,
   },
 
-  statusBadge: {
-    borderRadius: radius.button,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    minWidth: 55,
-    alignItems: 'center',
-  },
-
-  statusText: {
-    color: colors.white,
-    fontSize: 8,
-    fontWeight: '700',
+  itemBadge: {
+    alignItems: 'flex-end',
   },
 
   bottomSpace: {

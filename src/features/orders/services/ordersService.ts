@@ -43,6 +43,9 @@ function mockSetStatus(id: string, status: Order['status']): Order {
    SHARED READS (owner: Danielo, CP-201). Do not change signatures.
 ========================================================= */
 
+// Max number of Active + Overdue orders a borrower may hold at once (HTML 20, 43).
+export const BORROWING_LIMIT = 3;
+
 // All of the signed-in user's orders; pass a role to get only one side.
 export async function getMyOrders(role?: OrderRole): Promise<Order[]> {
   if (USE_MOCK) return role ? mockOrders.filter((o) => o.role === role) : mockOrders;
