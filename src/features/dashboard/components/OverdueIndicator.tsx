@@ -1,26 +1,45 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing, text } from '../../../theme';
+import { colors, radius, spacing } from '../../../theme';
 
-// OWNER: Member A. CP-506 Build overdue/unreturned status indicators on dashboards.
-// ONE reusable indicator for both dashboards. Danielo's Borrower dashboard
-// (CP-201) and Member A's Lender dashboard (CP-203) both import it, so keep
-// the props stable: { status, detail }. Colors from theme only; status is
-// always color + icon + label (CLAUDE.md rule 6).
-// Design: HTML 20 shows Overdue ("3 days overdue"). Unreturned has no mockup yet:
-// reuse the same look with the error color and ask the Business Analyst.
-// TODO (Member A): replace this simple version with the final design.
-export function OverdueIndicator({ status, detail }: { status: 'Overdue' | 'Unreturned'; detail?: string }) {
-  const color = status === 'Overdue' ? colors.warning : colors.error;
+// CP-506. Used on the Borrower and Lender dashboards (Danielo uses it too), so keep these props stable.
+//   status: 'Overdue' | 'Unreturned' (any other status renders nothing)
+//   detail: optional short text next to the label, e.g. '3 days overdue'
+type Props = { status: string; detail?: string };
+
+export function OverdueIndicator({ status, detail }: Props) {
+  if (status !== 'Overdue' && status !== 'Unreturned') return null;
+
+  // Unreturned is the more serious state, so it gets the solid red pill.
+  const severe = status === 'Unreturned';
+  const fg = severe ? colors.white : colors.error;
+
   return (
-    <View style={s.row} accessibilityLabel={detail ? `${status}. ${detail}` : status}>
-      <Ionicons name={status === 'Overdue' ? 'alert-circle-outline' : 'close-circle-outline'} size={14} color={color} />
-      <Text style={[text.caption, { color }]}>{detail ? `${status} · ${detail}` : status}</Text>
+    <View style={s.row} accessibilityRole="alert" accessibilityLabel={detail ? `${status}. ${detail}` : status}>
+      <View style={[s.pill, severe ? s.pillSevere : s.pillWarn]}>
+        <Ionicons name={severe ? 'alert-circle' : 'time-outline'} size={11} color={fg} />
+        <Text style={[s.label, { color: fg }]}>{status}</Text>
+      </View>
+      {detail ? <Text style={s.detail} numberOfLines={1}>{detail}</Text> : null}
     </View>
   );
 }
 
+export default OverdueIndicator;
+
 const s = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start', borderRadius: radius.pill },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderRadius: radius.button,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  pillWarn: { backgroundColor: colors.goldSoft, borderWidth: 1, borderColor: colors.error },
+  pillSevere: { backgroundColor: colors.error, borderWidth: 1, borderColor: colors.error },
+  label: { fontSize: 8, fontWeight: '700' },
+  detail: { color: colors.error, fontSize: 8, fontWeight: '600', flexShrink: 1 },
 });
