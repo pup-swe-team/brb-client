@@ -23,6 +23,7 @@ import { VerifiedLabel } from '../../../shared/components';
 import { useVerificationStatus } from '../../profile/hooks/useVerificationStatus';
 import { PublicLenderProfile, getLenderProfile } from '../../profile/services/lenderProfile';
 import { AvailabilityCalendar } from '../components/AvailabilityCalendar';
+import { createBorrowRequest } from '../../orders/services/ordersService';
 
 type CalendarPickerProps = {
   visible: boolean;
@@ -103,6 +104,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('');
   const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
 
   const openCalendar = (target: 'checkout' | 'return') => {
@@ -143,18 +145,63 @@ export default function ItemDetailScreen({ navigation, route }: any) {
         ? { title: 'Verification not approved', message: 'Your ID was not approved. Upload a new ID to request items.', action: 'Upload New ID' }
         : { title: 'Verify your identity first', message: 'You need a verified account to request items. It only takes a few minutes.', action: 'Verify Now' };
 
-  const confirmRequest = () => {
+  const confirmRequest = async () => {
+    if (!checkout || !returnDate) {
+      Alert.alert('Choose your dates', 'Please select a start date and return date.');
+      return;
+    }
+
+    if (returnDate < checkout) {
+      Alert.alert('Invalid dates', 'The return date must be on or after the start date.');
+      return;
+    }
+
     if (!isFree && !paymentMethod.trim()) {
       Alert.alert('Required field', 'Please enter a payment method.');
       return;
     }
 
-    setConfirmVisible(false);
-    setRequestVisible(false);
-    Alert.alert(
-      isFree ? 'Borrow request prepared' : 'Rental request prepared',
-      `Your ${isFree ? 'borrow' : 'rental'} request details are ready. Connect this action to your backend to submit the actual request.`,
-    );
+    const listingId = item.id ?? item.listingId;
+    if (listingId === undefined || listingId === null || String(listingId).trim() === '') {
+      Alert.alert(
+        'Unable to submit',
+        'This listing is missing its ID. Please check the listing data before submitting the request.',
+      );
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const requestMessage = [
+        message.trim(),
+        !isFree ? `Payment method: ${paymentMethod.trim()}` : '',
+      ].filter(Boolean).join('\n');
+
+      await createBorrowRequest({
+        listingId: String(listingId),
+        startDate: checkout,
+        endDate: returnDate,
+        message: requestMessage || undefined,
+      });
+
+      setConfirmVisible(false);
+      setRequestVisible(false);
+      setMessage('');
+      setPaymentMethod('');
+
+      Alert.alert(
+        'Request sent',
+        `Your ${isFree ? 'borrow' : 'rental'} request has been submitted.`,
+        [{ text: 'OK', onPress: () => navigation.goBack() }],
+      );
+    } catch (error) {
+      Alert.alert(
+        'Request failed',
+        error instanceof Error ? error.message : 'Please try again.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -603,10 +650,13 @@ export default function ItemDetailScreen({ navigation, route }: any) {
                 <Text style={styles.confirmCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={styles.confirmButton}
+                style={[styles.confirmButton, submitting && { opacity: 0.6 }]}
                 onPress={confirmRequest}
+                disabled={submitting}
               >
-                <Text style={styles.confirmButtonText}>Confirm</Text>
+                <Text style={styles.confirmButtonText}>
+                  {submitting ? 'Sending...' : 'Confirm'}
+                </Text>
               </Pressable>
             </View>
           </View>
