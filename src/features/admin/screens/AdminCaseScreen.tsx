@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -75,21 +75,41 @@ export function AdminCaseScreen({ navigation, route }: any) {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setData(await getAdminCase(caseId));
-    } catch {
-      setError('Could not load this case.');
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    let active = true;
+    getAdminCase(caseId)
+      .then((res) => {
+        if (active) {
+          setData(res);
+          setError(null);
+        }
+      })
+      .catch(() => {
+        if (active) setError('Could not load this case.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [caseId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const reload = () => {
+    setLoading(true);
+    setError(null);
+    getAdminCase(caseId)
+      .then((res) => {
+        setData(res);
+        setError(null);
+      })
+      .catch(() => {
+        setError('Could not load this case.');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  };
 
   const confirmAction = async () => {
     if (!pending || !data) return;
@@ -121,7 +141,7 @@ export function AdminCaseScreen({ navigation, route }: any) {
       <Shell onBack={goBack}>
         <View style={s.errorWrap}>
           <Text style={s.errorText}>{error ?? 'Case not found.'}</Text>
-          <Button title="Try again" variant="secondary" onPress={load} />
+          <Button title="Try again" variant="secondary" onPress={reload} />
         </View>
       </Shell>
     );
@@ -197,8 +217,6 @@ export function AdminCaseScreen({ navigation, route }: any) {
     </Shell>
   );
 }
-
-export default AdminCaseScreen;
 
 const s = StyleSheet.create({
   // Same full-bleed trick as ProfileScreen so the header spans the screen.

@@ -33,7 +33,7 @@ export default function EmailVerifiedScreen({
 
         {/* DESCRIPTION */}
         <Text style={styles.description}>
-          You're in, Iskolar ng Bayan! Log in and verify
+          You&apos;re in, Iskolar ng Bayan! Log in and verify
           {'\n'}
           your identity next so you can borrow and lend.
         </Text>

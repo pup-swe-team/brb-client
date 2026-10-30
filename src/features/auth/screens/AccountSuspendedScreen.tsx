@@ -38,7 +38,7 @@ export default function AccountSuspendedScreen({
         {/* DESCRIPTION */}
 
         <Text style={styles.description}>
-          Your CoPUP account can't be used right now.
+          Your CoPUP account can&apos;t be used right now.
           If you think this is a mistake, email us at
         </Text>
 

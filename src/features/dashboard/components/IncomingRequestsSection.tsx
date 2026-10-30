@@ -1,6 +1,7 @@
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Card, EmptyState, StatusBadge } from '../../../shared/components';
 import { colors, text } from '../../../theme';
 import type { Order } from '../../../shared/types';
@@ -10,20 +11,28 @@ export function IncomingRequestsSection({ navigation }: { navigation: any }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadRequests = useCallback(async () => {
-    try {
-      const lenderOrders = await getMyOrders('Lender');
-      setOrders(lenderOrders.filter((order) => order.status === 'Requested'));
-    } catch (error) {
-      console.error('Failed to load incoming requests:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadRequests();
-  }, [loadRequests]);
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getMyOrders('Lender')
+        .then((lenderOrders) => {
+          if (active) {
+            setOrders(lenderOrders.filter((order) => order.status === 'Requested'));
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to load incoming requests:', error);
+        })
+        .finally(() => {
+          if (active) {
+            setLoading(false);
+          }
+        });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   if (loading) {
     return <ActivityIndicator color={colors.primary} />;

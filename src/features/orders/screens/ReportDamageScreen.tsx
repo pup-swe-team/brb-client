@@ -54,7 +54,7 @@ export default function ReportDamageScreen({ navigation, route }: any) {
 
             <Text style={styles.heading}>Report damage or missing items</Text>
             <Text style={styles.subtitle}>
-              Describe the item's condition after it was returned. Please
+              Describe the item&apos;s condition after it was returned. Please
               provide photo and video evidence to support your report.
             </Text>
 
@@ -74,7 +74,7 @@ export default function ReportDamageScreen({ navigation, route }: any) {
                 accessibilityLabel="Damage description"
               />
               <Text style={styles.helper}>
-                Include details about the item's condition and any missing parts.
+                Include details about the item&apos;s condition and any missing parts.
               </Text>
             </Card>
 

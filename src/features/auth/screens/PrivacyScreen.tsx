@@ -85,7 +85,7 @@ export default function PrivacyScreen({
             </Text>
 
             <Text style={styles.bullet}>
-              • Provide and improve the app's features and
+              • Provide and improve the app&apos;s features and
               functionality
             </Text>
 
@@ -141,7 +141,7 @@ export default function PrivacyScreen({
             </Text>
 
             <Text style={styles.section}>
-              6. Children's Privacy
+              6. Children&apos;s Privacy
             </Text>
 
             <Text style={styles.paragraph}>

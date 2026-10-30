@@ -9,7 +9,7 @@ import { StatusBadge } from '../../../shared/components/StatusBadge';
 import type { Order } from '../../../shared/types';
 import { getMyOrders } from '../../orders/services/ordersService';
 import { OverdueIndicator } from './OverdueIndicator';
-// TODO (paste from the stub): import { IncomingRequestsSection } from './IncomingRequestsSection';
+import { IncomingRequestsSection } from './IncomingRequestsSection';
 
 // OWNER: Member A. CP-203 Lender dashboard shell.
 // Rendered by ProfileScreen as <LenderDashboard navigation={navigation} /> inside its ScrollView,
@@ -83,31 +83,37 @@ function OrderCard({ order, onPress }: { order: Order; onPress: () => void }) {
 export function LenderDashboard({ navigation }: { navigation: any }) {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
+
+  const fetchOrders = useCallback(() => {
+    let active = true;
+    getMyOrders('Lender')
+      .then((data) => {
+        if (!active) return;
+        setOrders(data);
+        setError(null);
+      })
+      .catch(() => {
+        if (active) setError('Could not load your lender orders.');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Refetch on focus so changes made on OrderDetail show up when returning here.
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      getMyOrders('Lender')
-        .then((data) => {
-          if (!active) return;
-          setOrders(data);
-          setError(null);
-        })
-        .catch(() => {
-          if (active) setError('Could not load your lender orders.');
-        });
-      return () => {
-        active = false;
-      };
-    }, [attempt]),
-  );
+  useFocusEffect(fetchOrders);
 
   const retry = () => {
     setOrders(null);
     setError(null);
-    setAttempt((a) => a + 1);
+    getMyOrders('Lender')
+      .then((data) => {
+        setOrders(data);
+        setError(null);
+      })
+      .catch(() => {
+        setError('Could not load your lender orders.');
+      });
   };
 
   const openOrder = (order: Order) => navigation.navigate('OrderDetail', { orderId: order.id, role: 'Lender' });
@@ -132,8 +138,9 @@ export function LenderDashboard({ navigation }: { navigation: any }) {
   const lateOrders = orders.filter((o) => isLate(o.status));
   const confirmedOrders = orders.filter((o) => o.status === 'Confirmed');
   const activeOrders = orders.filter((o) => o.status === 'Active');
+  const pastOrders = orders.filter((o) => o.status === 'Completed' || o.status === 'Cancelled' || o.status === 'Declined');
   const requestedCount = orders.filter((o) => o.status === 'Requested').length;
-  const nothingToShow = lateOrders.length + confirmedOrders.length + activeOrders.length === 0;
+  const nothingToShow = lateOrders.length + confirmedOrders.length + activeOrders.length + pastOrders.length === 0;
 
   return (
     <View>
@@ -144,17 +151,39 @@ export function LenderDashboard({ navigation }: { navigation: any }) {
           <Text style={s.statLabel}>Requests</Text>
         </View>
         <View style={[s.stat, s.statMid]}>
-          <Text style={s.statValue}>{confirmedOrders.length}</Text>
-          <Text style={s.statLabel}>Confirmed</Text>
+          <Text style={s.statValue}>{confirmedOrders.length + activeOrders.length}</Text>
+          <Text style={s.statLabel}>Ongoing</Text>
+        </View>
+        <View style={[s.stat, s.statMid]}>
+          <Text style={s.statValue}>{pastOrders.length}</Text>
+          <Text style={s.statLabel}>Past</Text>
         </View>
         <View style={s.stat}>
-          <Text style={s.statValue}>{activeOrders.length}</Text>
-          <Text style={s.statLabel}>Active</Text>
+          <Text style={s.statValue}>5.0 ★</Text>
+          <Text style={s.statLabel}>Rating</Text>
         </View>
       </View>
 
-      {/* INCOMING REQUESTS (Member B's component).
-          Paste the <IncomingRequestsSection ... /> line from the original stub here. */}
+      {/* MY LISTINGS */}
+      <View style={s.section}>
+        <View style={s.lenderCard}>
+          <View style={s.lenderIcon}>
+            <Ionicons name="albums-outline" size={23} color={colors.primary} />
+          </View>
+          <View style={s.lenderInfo}>
+            <Text style={s.lenderTitle}>My Listings</Text>
+            <Text style={s.lenderDescription}>Edit, deactivate or delete the items you lend</Text>
+          </View>
+          <Pressable style={s.applyButton} onPress={() => navigation.navigate('MyListings')} accessibilityRole="button">
+            <Text style={s.applyText}>Manage</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* INCOMING REQUESTS (CP-502) */}
+      <View style={s.section}>
+        <IncomingRequestsSection navigation={navigation} />
+      </View>
 
       {/* OVERDUE / UNRETURNED */}
       {lateOrders.length > 0 && (
@@ -181,6 +210,16 @@ export function LenderDashboard({ navigation }: { navigation: any }) {
         <View style={s.section}>
           <SectionTitle title="Active" count={activeOrders.length} />
           {activeOrders.map((o) => (
+            <OrderCard key={o.id} order={o} onPress={() => openOrder(o)} />
+          ))}
+        </View>
+      )}
+
+      {/* PAST ORDERS */}
+      {pastOrders.length > 0 && (
+        <View style={s.section}>
+          <SectionTitle title="Past orders" count={pastOrders.length} />
+          {pastOrders.map((o) => (
             <OrderCard key={o.id} order={o} onPress={() => openOrder(o)} />
           ))}
         </View>
@@ -230,6 +269,37 @@ const s = StyleSheet.create({
     paddingHorizontal: 5,
   },
   countText: { color: colors.primary, fontSize: 9, fontWeight: '700' },
+
+  lenderCard: {
+    backgroundColor: colors.goldSoft,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    borderRadius: radius.card,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  lenderIcon: {
+    width: 43,
+    height: 43,
+    borderRadius: radius.input,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  lenderInfo: { flex: 1, paddingRight: spacing.sm },
+  lenderTitle: { color: colors.primary, fontSize: 11, fontWeight: '700', marginBottom: 4 },
+  lenderDescription: { color: colors.textSecondary, fontSize: 8, lineHeight: 12 },
+  applyButton: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.button,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  applyText: { color: colors.white, fontSize: 9, fontWeight: '700' },
 
   card: {
     minHeight: 65,

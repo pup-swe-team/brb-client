@@ -412,7 +412,7 @@ export default function ProfileScreen({ navigation }: any) {
           </View>
 
           {/* ROLE SWITCH (CP-203, Member A edits DashboardSwitch) */}
-          <DashboardSwitch role={role} onChange={setRole} />
+          <DashboardSwitch role={role} onChange={setRole} hasLenderRole={isLender === true} />
 
           {/* LENDER APPLICATION RESULT (CP-1003) */}
           {applyMessage ? (

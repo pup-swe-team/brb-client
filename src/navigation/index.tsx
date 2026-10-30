@@ -46,7 +46,7 @@ import OrderDetailScreen from '../features/orders/screens/OrderDetailScreen';
 import HandoverCodeScreen from '../features/orders/screens/HandoverCodeScreen';
 import ReturnCodeScreen from '../features/orders/screens/ReturnCodeScreen';
 import ReportDamageScreen from '../features/orders/screens/ReportDamageScreen';
-import AdminCaseScreen from '../features/admin/screens/AdminCaseScreen';
+import { AdminCaseScreen } from '../features/admin/screens/AdminCaseScreen';
 
 
 /* =========================================================

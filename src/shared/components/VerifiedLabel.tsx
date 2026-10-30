@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing } from '../../theme';
+import { colors, radius } from '../../theme';
 
 // CP-107: what OTHER users see. Only a name, affiliation, and a verified flag go in; the ID document never reaches these components.
 

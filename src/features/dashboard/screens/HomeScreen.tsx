@@ -11,7 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { colors, radius, spacing } from '../../../theme';
+import { colors, spacing } from '../../../theme';
 import { VerifiedLabel, AffiliationType } from '../../../shared/components';
 
 
@@ -43,7 +43,7 @@ const categories = [
    RECENTLY LISTED
 ========================================================= */
 
-const listings: Array<{
+const listings: {
   id: string;
   title: string;
   owner: string;
@@ -54,7 +54,7 @@ const listings: Array<{
   rating: string;
   image: string;
   photos?: string[];
-}> = [
+}[] = [
   {
     id: '1',
     title: 'Laptop (i5 8th Gen)',

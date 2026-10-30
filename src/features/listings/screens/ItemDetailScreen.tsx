@@ -53,7 +53,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
   const author = item.author || '';
   const price = item.price || '₱15 / day';
   const isFree = String(price).trim().toUpperCase() === 'FREE';
-  const requestActionLabel = isFree ? 'Borrow' : 'Rent';
   const photos: string[] =
     item.photos?.length
       ? item.photos
