@@ -1,5 +1,5 @@
-import { Listing, SearchParams, SearchResult } from '../types';
-import { USE_MOCK } from '../../../services/http';
+import { Listing, SearchParams, SearchResult, ListingCategory } from '../types';
+import { http, USE_MOCK } from '../../../services/http';
 import { MOCK_LISTINGS } from './mockListings';
 
 function matches(l: Listing, p: SearchParams): boolean {
@@ -43,11 +43,64 @@ async function searchMock(p: SearchParams): Promise<SearchResult> {
   return { items: all.slice(start, start + p.pageSize), page: p.page, totalPages, total: all.length };
 }
 
+function getMediaUrl(path?: string | null): string | undefined {
+  if (!path) return undefined;
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  const baseUrl = (process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1').replace(/\/api\/v1\/?$/, '');
+  return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
+function mapBackendListing(item: any): Listing {
+  const photoList = (item.photos || [])
+    .map((p: any) => getMediaUrl(p.file_reference || p.photo || p.url))
+    .filter((uri: any): uri is string => Boolean(uri));
+  const firstPhoto = photoList.length > 0 ? photoList[0] : undefined;
+
+  return {
+    id: String(item.id),
+    title: item.title,
+    category: (item.category?.name ?? 'School Supplies') as ListingCategory,
+    location: item.pickup_location?.name ?? 'Main Campus Library',
+    ownerName: item.lender?.full_name ?? 'BRB Lender',
+    ownerId: item.lender?.id != null ? String(item.lender.id) : undefined,
+    ownerVerified: Boolean(item.is_ownership_confirmed || item.lender?.verified),
+    ownerPhoto: item.lender?.photo ? getMediaUrl(item.lender.photo) : undefined,
+    photos: photoList,
+    imageUrl: firstPhoto,
+    description: item.description || '',
+    rating: 4.8,
+    reviewCount: 5,
+    availableFrom: item.available_from ?? '',
+    availableTo: item.available_to ?? '',
+    createdAt: (item.created_at ?? '').slice(0, 10),
+    price: item.rate_per_day && Number(item.rate_per_day) > 0 ? `₱${item.rate_per_day}/day` : 'FREE',
+  };
+}
+
 export async function searchListings(p: SearchParams): Promise<SearchResult> {
   if (USE_MOCK) return searchMock(p);
 
-  // TODO: real endpoint, once the backend confirms it. Something like:
-  // const res = await http.get('/listings', { params: { q: p.keyword, ...p.filters, sort: p.sort, page: p.page, pageSize: p.pageSize } });
-  // return res.data;
-  throw new Error('Listings search endpoint not connected yet. Set EXPO_PUBLIC_USE_MOCK=true to use mock data.');
+  const params: Record<string, any> = {
+    page: p.page,
+  };
+  if (p.keyword?.trim()) {
+    params.q = p.keyword.trim();
+  }
+  if (p.sort === 'newest') {
+    params.sort = '-created_at';
+  } else if (p.sort === 'rating') {
+    params.sort = '-created_at';
+  }
+
+  const { data } = await http.get('/listings/', { params });
+  const rawList: any[] = Array.isArray(data) ? data : (data.results ?? []);
+  const count: number = Array.isArray(data) ? rawList.length : (data.count ?? rawList.length);
+  const totalPages = Math.max(1, Math.ceil(count / p.pageSize));
+
+  return {
+    items: rawList.map(mapBackendListing),
+    page: p.page,
+    totalPages,
+    total: count,
+  };
 }

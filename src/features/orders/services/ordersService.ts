@@ -44,6 +44,14 @@ function toTitleCase(s: string): OrderStatus {
 export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
   if (!raw) return raw;
   const id = String(raw.id ?? raw.order_id ?? '');
+  const listingId =
+    raw.listingId != null
+      ? String(raw.listingId)
+      : raw.listing_id != null
+      ? String(raw.listing_id)
+      : raw.listing?.id != null
+      ? String(raw.listing.id)
+      : undefined;
   const listingTitle = raw.listingTitle || raw.listing_title || raw.listing?.title || 'Listing';
   const status = toTitleCase(raw.status?.name || raw.status || 'Requested');
   const startDate = raw.startDate || raw.start_date || '';
@@ -70,6 +78,7 @@ export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
 
   return {
     id,
+    listingId,
     listingTitle,
     status,
     startDate,
@@ -93,9 +102,10 @@ export const BORROWING_LIMIT = 3;
 export async function getMyOrders(role?: OrderRole): Promise<Order[]> {
   if (USE_MOCK) return role ? mockOrders.filter((o) => o.role === role) : mockOrders;
   try {
-    const { data } = await http.get<any[]>('/orders/', { params: role ? { role: role.toLowerCase() } : undefined });
-    if (Array.isArray(data)) {
-      return data.map((item) => normalizeOrder(item, role));
+    const { data } = await http.get<any>('/orders/', { params: role ? { role: role.toLowerCase() } : undefined });
+    const list = Array.isArray(data) ? data : (data?.results ?? []);
+    if (Array.isArray(list)) {
+      return list.map((item) => normalizeOrder(item, role));
     }
   } catch {
     // Fallback to dashboard aggregation endpoints if /orders/ list is not available

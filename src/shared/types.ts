@@ -10,4 +10,5 @@ export interface Order {
   orderNumber?: string;    // e.g. "BRB-0142"
   pickupLocation?: string;
   pricePerDay?: number;    // PHP, 0 = FREE (payment happens outside the app)
+  listingId?: string;
 }

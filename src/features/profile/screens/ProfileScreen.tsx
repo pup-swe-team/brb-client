@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -347,7 +348,15 @@ export default function ProfileScreen({ navigation }: any) {
           {/* PROFILE INFORMATION */}
           <View style={styles.profileCard}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials}</Text>
+              {user?.photo_url ? (
+                <Image
+                  source={{ uri: user.photo_url }}
+                  style={styles.avatarImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={styles.avatarText}>{initials}</Text>
+              )}
             </View>
 
             <View style={styles.profileInfo}>
@@ -408,6 +417,21 @@ export default function ProfileScreen({ navigation }: any) {
                   4.80
                 </Text>
               </View>
+
+              {(user?.street_address || user?.home_address) ? (
+                <View style={styles.metaRow}>
+                  <Ionicons name="location-outline" size={11} color={colors.textSecondary} />
+                  <Text style={styles.metaText} numberOfLines={1}>
+                    {user?.street_address || user?.home_address}
+                  </Text>
+                </View>
+              ) : null}
+
+              {user?.bio ? (
+                <Text style={styles.bioText} numberOfLines={3}>
+                  {user.bio}
+                </Text>
+              ) : null}
             </View>
           </View>
 
@@ -744,12 +768,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
+    overflow: 'hidden',
+  },
+
+  avatarImage: {
+    width: 55,
+    height: 55,
+    borderRadius: 28,
   },
 
   avatarText: {
     color: colors.white,
     fontSize: 20,
     fontWeight: '700',
+  },
+
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 3,
+  },
+
+  metaText: {
+    color: colors.textSecondary,
+    fontSize: 10,
+    flexShrink: 1,
+  },
+
+  bioText: {
+    color: colors.text,
+    fontSize: 11,
+    marginTop: 4,
+    lineHeight: 15,
   },
 
   profileInfo: {

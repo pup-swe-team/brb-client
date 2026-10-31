@@ -20,6 +20,9 @@ Copy-Item .env.example .env
 
 # 3. Apply database migrations
 .venv\Scripts\python.exe manage.py migrate
+
+# 4. Populate test data (Demo Lenders & Listings)
+.venv\Scripts\python.exe manage.py seed_demo_data --demo
 ```
 
 ### Frontend (`brb-client`)
@@ -35,7 +38,38 @@ Copy-Item .env.example .env
 
 ---
 
-## 2. Daily Run Commands
+## 2. QA Test Data & Demo Accounts
+
+### A. Seed Demo Accounts & Listings Locally (Recommended)
+To populate 12 verified demo lenders, approved ID documents, categories, and 35+ item listings in your local database:
+```powershell
+cd brb-server
+.venv\Scripts\python.exe manage.py seed_demo_data --demo
+```
+*(To reset and re-seed clean data: `.venv\Scripts\python.exe manage.py seed_demo_data --demo --reset`)*
+
+**Demo Lender Credentials:**
+- **Emails:** `demo.lender01@iskolarngbayan.pup.edu.ph` to `demo.lender12@iskolarngbayan.pup.edu.ph`
+- **Password:** `DemoLender123!`
+
+### B. Sync Directly from Render Database
+If you want to pull an exact replica of the live Render PostgreSQL database into your local SQLite database:
+```powershell
+cd brb-server
+
+# 1. Export users and listings from Render
+$env:DATABASE_URL = "postgresql://db1_copup:Ry1i5PEaH6yPprZnJuITTImewT6VttMh@dpg-db1ne9vavr4c73cp44u0-a.singapore-postgres.render.com/copup_db"
+.venv\Scripts\python.exe manage.py dumpdata users listings --natural-foreign --natural-primary --indent 2 -o render_data.json
+$env:DATABASE_URL = ""
+
+# 2. Import into local SQLite
+.venv\Scripts\python.exe manage.py loaddata render_data.json
+Remove-Item render_data.json
+```
+
+---
+
+## 3. Daily Run Commands
 
 Once dependencies are installed, you only need to run the servers:
 
@@ -60,14 +94,14 @@ npx expo start
 
 ---
 
-## 3. Environment Configuration (.env)
+## 4. Environment Configuration (.env)
 
 Each tester must configure their local `.env` files:
 
 ### Backend (`brb-server/.env`)
 ```ini
 DEBUG=True
-DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME  # Shared Render Postgres or sqlite:///db.sqlite3
+DATABASE_URL=sqlite:///db.sqlite3
 ALLOWED_HOSTS=localhost,127.0.0.1,<YOUR-PC-LAN-IP>
 JWT_SECRET=your-jwt-secret-key-at-least-32-bytes
 ```
@@ -81,7 +115,7 @@ EXPO_PUBLIC_USE_MOCK=false
 
 ---
 
-## 4. Admin Portal Access
+## 5. Admin Portal Access
 
 The Admin Portal is used to review identity documents, manage unreturned cases, and supervise users.
 
@@ -99,7 +133,7 @@ The Admin Portal is used to review identity documents, manage unreturned cases, 
 
 ---
 
-## 5. Manual QA Testing Flow (Sprint 3)
+## 6. Manual QA Testing Flow (Sprint 3)
 
 ### A. Borrower Flow & Verification
 1. **Register** using a PUP webmail (`@iskolarngbayan.pup.edu.ph` for students, `@pup.edu.ph` for faculty/staff).
@@ -137,7 +171,7 @@ The Admin Portal is used to review identity documents, manage unreturned cases, 
 
 ---
 
-## 6. Troubleshooting Checklist
+## 7. Troubleshooting Checklist
 
 | Issue | Solution |
 |---|---|

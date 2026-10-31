@@ -5,6 +5,7 @@ import * as Linking from 'expo-linking';
 import {
   NavigationContainer,
   DefaultTheme,
+  LinkingOptions,
 } from '@react-navigation/native';
 
 import {
@@ -81,6 +82,7 @@ import DeactivateAccountScreen from '../features/profile/screens/DeactivateAccou
 ========================================================= */
 
 import { ScreenContainer } from '../shared/components';
+import { getAccessToken } from '../services/http';
 import { colors, spacing } from '../theme';
 
 /* =========================================================
@@ -290,13 +292,41 @@ function MainTabs() {
    DEEP LINKING
 ========================================================= */
 
-const linking = {
+const linking: LinkingOptions<RootStackParamList> = {
   prefixes: [Linking.createURL('/'), 'brb://'],
 
   config: {
     screens: {
+      Landing: 'landing',
+      Login: 'login',
+      Register: 'register',
       VerifyEmail: 'auth/verify-email',
+      EmailVerified: 'auth/email-verified',
+      AccountSuspended: 'auth/account-suspended',
+      SignUpMessage: 'auth/signup-message',
+      ForgotPassword: 'auth/forgot-password',
+      PasswordResetSent: 'auth/password-reset-sent',
       NewPassword: 'auth/reset-password',
+      Terms: 'terms',
+      Privacy: 'privacy',
+      Tabs: {
+        screens: {
+          Home: 'home',
+          Search: 'search',
+          AddItem: 'add-item',
+          Chat: 'chat',
+          Profile: 'profile',
+        },
+      },
+      EditProfile: 'profile/edit',
+      AccountSettings: 'settings',
+      ChangePassword: 'settings/change-password',
+      ChangeEmail: 'settings/change-email',
+      NotificationPreferences: 'settings/notifications',
+      DeactivateAccount: 'settings/deactivate',
+      VerifyIdentity: 'verify-identity',
+      MyListings: 'my-listings',
+      Gallery: 'gallery',
     },
   },
 };
@@ -306,6 +336,28 @@ const linking = {
 ========================================================= */
 
 export function RootNavigator() {
+  const [initialRoute, setInitialRoute] = React.useState<keyof RootStackParamList | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    getAccessToken()
+      .then((token) => {
+        if (!active) return;
+        setInitialRoute(token ? 'Tabs' : 'Landing');
+      })
+      .catch(() => {
+        if (!active) return;
+        setInitialRoute('Landing');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!initialRoute) {
+    return null;
+  }
+
   return (
     <NavigationContainer
       linking={linking}
@@ -333,7 +385,7 @@ export function RootNavigator() {
       }}
     >
       <Stack.Navigator
-        initialRouteName="Landing"
+        initialRouteName={initialRoute}
         screenOptions={{
           headerShown: false,
         }}

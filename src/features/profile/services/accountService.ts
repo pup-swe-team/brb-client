@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { http, USE_MOCK, clearAuthTokens } from '../../../services/http';
 
 // NOTE: the backend contract for these endpoints is not documented yet (docs/BACKEND_CONNECTION.md).
@@ -57,15 +58,25 @@ export async function getAccountProfile(): Promise<AccountProfile> {
   const { data } = await http.get('/auth/me/');
   return {
     fullName: data.full_name ?? '',
-    photoUri: data.photo ?? null,
+    photoUri: data.photo_url ?? data.photo ?? null,
     contactNumber: data.contact_number ?? '',
-    homeAddress: data.home_address ?? '',
+    homeAddress: data.street_address ?? data.home_address ?? '',
     bio: data.bio ?? '',
     email: data.email ?? '',
   };
 }
 
-export type ProfileUpdate = { fullName: string; contactNumber: string; homeAddress: string; bio: string; photoUri: string | null; photoChanged: boolean };
+export type ProfileUpdate = {
+  fullName: string;
+  contactNumber: string;
+  homeAddress: string;
+  bio: string;
+  photoUri: string | null;
+  photoChanged: boolean;
+  photoFile?: File;
+  photoFileName?: string;
+  photoMimeType?: string;
+};
 
 export async function updateProfile(p: ProfileUpdate): Promise<void> {
   if (USE_MOCK) {
@@ -76,10 +87,35 @@ export async function updateProfile(p: ProfileUpdate): Promise<void> {
   const form = new FormData();
   form.append('full_name', p.fullName);
   form.append('contact_number', p.contactNumber);
+  form.append('street_address', p.homeAddress);
   form.append('home_address', p.homeAddress);
   form.append('bio', p.bio);
   if (p.photoChanged && p.photoUri) {
-    form.append('photo', { uri: p.photoUri, name: 'profile.jpg', type: 'image/jpeg' } as any);
+    if (Platform.OS === 'web') {
+      if (p.photoFile) {
+        form.append('photo', p.photoFile);
+      } else {
+        try {
+          const res = await fetch(p.photoUri);
+          const blob = await res.blob();
+          const fileName = p.photoFileName || 'profile.jpg';
+          const file = new File([blob], fileName, {
+            type: p.photoMimeType || blob.type || 'image/jpeg',
+          });
+          form.append('photo', file);
+        } catch {
+          const res = await fetch(p.photoUri);
+          const blob = await res.blob();
+          form.append('photo', blob, p.photoFileName || 'profile.jpg');
+        }
+      }
+    } else {
+      form.append('photo', {
+        uri: p.photoUri,
+        name: p.photoFileName || 'profile.jpg',
+        type: p.photoMimeType || 'image/jpeg',
+      } as any);
+    }
   }
   await http.patch('/auth/me/', form);
 }
@@ -98,7 +134,7 @@ export async function requestEmailChange(newEmail: string, password: string): Pr
     await delay();
     return;
   }
-  await http.post('/auth/change-email/', { new_email: newEmail, password });
+  await http.post('/auth/email-change/', { new_email: newEmail, password });
 }
 
 export async function resendEmailChangeVerification(newEmail: string): Promise<void> {
@@ -106,7 +142,15 @@ export async function resendEmailChangeVerification(newEmail: string): Promise<v
     await delay(250);
     return;
   }
-  await http.post('/auth/change-email/resend/', { new_email: newEmail });
+  await http.post('/auth/email-change/', { new_email: newEmail });
+}
+
+export async function confirmEmailChange(uid: string, token: string): Promise<void> {
+  if (USE_MOCK) {
+    await delay(250);
+    return;
+  }
+  await http.post('/auth/email-change/confirm/', { uid, token });
 }
 
 export async function getNotificationPrefs(): Promise<NotificationPrefs> {

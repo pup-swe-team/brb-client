@@ -12,12 +12,18 @@ export type Listing = {
   category: ListingCategory;
   location: string;
   ownerName: string;
+  ownerId?: string;
   ownerVerified: boolean; // CP-107: only a flag, never the document
   rating: number;
   reviewCount: number;
   availableFrom: string; // YYYY-MM-DD
   availableTo: string; // YYYY-MM-DD
   createdAt: string; // YYYY-MM-DD
+  price?: string;
+  ownerPhoto?: string;
+  imageUrl?: string;
+  photos?: string[];
+  description?: string;
 };
 
 export type SearchFilters = {

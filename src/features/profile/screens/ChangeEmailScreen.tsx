@@ -5,7 +5,7 @@ import { colors, radius, spacing, text } from '../../../theme';
 import { Button, Input } from '../../../shared/components';
 import { extractApiError } from '../../../services/http';
 import { SettingsShell } from '../components/SettingsShell';
-import { requestEmailChange, resendEmailChangeVerification } from '../services/accountService';
+import { requestEmailChange, resendEmailChangeVerification, confirmEmailChange } from '../services/accountService';
 import { verifyEmail } from '../../auth/services/authService';
 import { extractUidToken } from '../../auth/screens/VerifyEmailScreen';
 
@@ -68,7 +68,7 @@ export default function ChangeEmailScreen({ navigation }: any) {
     setLinkError('');
     setVerifying(true);
     try {
-      await verifyEmail(uid, token);
+      await confirmEmailChange(uid, token);
       Alert.alert('Email verified', 'Your email address has been updated.');
       navigation.goBack();
     } catch (err) {

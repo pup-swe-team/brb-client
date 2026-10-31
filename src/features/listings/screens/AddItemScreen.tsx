@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { extractApiError } from '../../../services/http';
 import { colors, spacing } from '../../../theme';
 import { useVerificationStatus } from '../../profile/hooks/useVerificationStatus';
 import { CATEGORIES, CONDITIONS, PICKUP_LOCATIONS, isValidDate, todayISO } from '../constants';
@@ -117,7 +118,7 @@ export default function AddItemScreen({ navigation, route }: any) {
       if (editing) navigation.goBack();
       else navigation.navigate('MyListings');
     } catch (e: any) {
-      Alert.alert('Could not save', e?.message ?? 'Something went wrong. Please try again.');
+      Alert.alert('Could not save', extractApiError(e));
     } finally {
       setSaving(false);
     }

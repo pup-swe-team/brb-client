@@ -127,13 +127,15 @@ export default function MyListingsScreen({ navigation }: any) {
       const orders = await getMyOrders('Lender');
 
       const matchingOrders = orders.filter(
-        (order: Order) => order.listingTitle === listing.title,
+        (order: Order) =>
+          (order.listingId && String(order.listingId) === String(listing.id)) ||
+          order.listingTitle?.trim().toLowerCase() === listing.title?.trim().toLowerCase(),
       );
 
       if (matchingOrders.length === 0) {
         Alert.alert(
           'No orders found',
-          `There are currently no lender orders matching "${listing.title}".`,
+          `There are currently no orders for "${listing.title}".`,
         );
         return;
       }

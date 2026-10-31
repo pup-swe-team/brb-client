@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme';
 import { VerifiedLabel } from '../../../shared/components/VerifiedLabel';
@@ -26,7 +26,11 @@ export function ListingResultCard({ listing, onPress }: Props) {
   return (
     <Pressable style={s.card} onPress={() => onPress?.(listing)} accessibilityRole="button">
       <View style={s.icon}>
-        <Ionicons name={CATEGORY_ICON[listing.category]} size={22} color={colors.primary} />
+        {(listing.imageUrl || listing.photos?.[0]) ? (
+          <Image source={{ uri: listing.imageUrl || listing.photos?.[0] }} style={s.cardImage} />
+        ) : (
+          <Ionicons name={CATEGORY_ICON[listing.category]} size={22} color={colors.primary} />
+        )}
       </View>
 
       <View style={s.info}>
@@ -81,6 +85,11 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.sm,
+    overflow: 'hidden',
+  },
+  cardImage: {
+    width: '100%',
+    height: '100%',
   },
   info: { flex: 1, paddingRight: spacing.xs, gap: 2 },
   title: { color: colors.text, fontSize: 11, fontWeight: '700', lineHeight: 14 },

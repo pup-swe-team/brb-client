@@ -12,6 +12,10 @@ export interface AuthUser {
   lender_status: string;
   email_verified_at: string | null;
   created_at: string;
+  photo_url?: string | null;
+  bio?: string | null;
+  street_address?: string | null;
+  home_address?: string | null;
 }
 
 export interface AuthTokens {

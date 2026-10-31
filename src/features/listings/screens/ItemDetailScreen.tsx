@@ -24,6 +24,7 @@ import { useVerificationStatus } from '../../profile/hooks/useVerificationStatus
 import { PublicLenderProfile, getLenderProfile } from '../../profile/services/lenderProfile';
 import { AvailabilityCalendar } from '../components/AvailabilityCalendar';
 import { createBorrowRequest } from '../../orders/services/ordersService';
+import { http } from '../../../services/http';
 
 type CalendarPickerProps = {
   visible: boolean;
@@ -49,24 +50,54 @@ export default function ItemDetailScreen({ navigation, route }: any) {
   const item = route?.params?.item ?? {};
   const insets = useSafeAreaInsets();
 
-  const title = item.title || 'Untitled listing';
-  const author = item.author || '';
-  const price = item.price || '₱15 / day';
+  const itemId = item?.id || route?.params?.id;
+  const [detailData, setDetailData] = useState<any>(null);
+
+  useEffect(() => {
+    if (!itemId) return;
+    let active = true;
+    http.get(`/listings/${itemId}/`)
+      .then((res) => {
+        if (active && res.data) {
+          setDetailData(res.data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [itemId]);
+
+  const title = detailData?.title || item.title || 'Untitled listing';
+  const author = detailData?.lender?.full_name || item.author || '';
+  const price = detailData?.rate_per_day
+    ? (Number(detailData.rate_per_day) > 0 ? `₱${detailData.rate_per_day} / day` : 'FREE')
+    : (item.price || 'FREE');
   const isFree = String(price).trim().toUpperCase() === 'FREE';
-  const photos: string[] =
-    item.photos?.length
+
+  const mediaBase = (process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1').replace(/\/api\/v1\/?$/, '');
+  const detailPhotos: string[] = (detailData?.photos || []).map((p: any) => {
+    const raw = p.file_reference || p.photo || p.url;
+    if (!raw) return '';
+    return raw.startsWith('http') ? raw : `${mediaBase}${raw.startsWith('/') ? '' : '/'}${raw}`;
+  }).filter(Boolean);
+
+  const photos: string[] = detailPhotos.length
+    ? detailPhotos
+    : (item.photos?.length
       ? item.photos
       : [
           item.image ||
             'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=900',
-        ];
+        ]);
   const { width: screenWidth } = useWindowDimensions();
   const [photoIndex, setPhotoIndex] = useState(0);
 
   // Availability window of this listing (YYYY-MM-DD). Missing = no restriction.
-  const availableFrom: string | undefined = item.availableFrom;
-  const availableTo: string | undefined = item.availableTo;
-  const lenderId: string | undefined = item.lenderId;
+  const availableFrom: string | undefined = detailData?.availability_windows?.[0]?.start_date || item.availableFrom;
+  const availableTo: string | undefined = detailData?.availability_windows?.[0]?.end_date || item.availableTo;
+  const lenderId: string | undefined = (detailData?.lender?.id != null ? String(detailData.lender.id) : undefined) || item.lenderId;
+  const displayDescription = detailData?.description || item.description;
 
   // Identity status decides whether the person may send a request.
   const { status: verificationStatus, loading: statusLoading } = useVerificationStatus();
@@ -329,7 +360,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
           <View style={styles.aboutSection}>
             <Text style={styles.sectionTitle}>About this Product</Text>
             {(item.details ||
-              (item.description ? [item.description] : ['No description provided.'])
+              (displayDescription ? [displayDescription] : ['No description provided.'])
             ).map((detail: string, index: number) => (
               <Text key={`${index}-${detail}`} style={styles.detailText}>
                 {detail}
@@ -345,11 +376,18 @@ export default function ItemDetailScreen({ navigation, route }: any) {
             accessibilityLabel="View lender profile"
           >
             <View style={styles.lenderAvatar}>
-              <Ionicons
-                name="person"
-                size={26}
-                color={colors.textMuted}
-              />
+              {(lender?.photoUrl || item.lenderPhoto || item.photoUrl) ? (
+                <Image
+                  source={{ uri: lender?.photoUrl || item.lenderPhoto || item.photoUrl }}
+                  style={styles.lenderAvatarImage}
+                />
+              ) : (
+                <Ionicons
+                  name="person"
+                  size={26}
+                  color={colors.textMuted}
+                />
+              )}
             </View>
 
             <View style={styles.lenderInfo}>
@@ -1148,6 +1186,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 9,
+    overflow: 'hidden',
+  },
+  lenderAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   lenderInfo: {
     flex: 1,

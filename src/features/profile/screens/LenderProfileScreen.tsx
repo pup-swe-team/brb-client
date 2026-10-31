@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -124,7 +124,11 @@ export default function LenderProfileScreen({ navigation, route }: any) {
         {/* PROFILE INFORMATION */}
         <View style={s.profileCard}>
           <View style={s.avatar}>
-            <Text style={s.avatarText}>{initials(lender.fullName)}</Text>
+            {lender.photoUrl ? (
+              <Image source={{ uri: lender.photoUrl }} style={s.avatarImage} />
+            ) : (
+              <Text style={s.avatarText}>{initials(lender.fullName)}</Text>
+            )}
           </View>
 
           <View style={s.profileInfo}>
@@ -260,7 +264,9 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
+    overflow: 'hidden',
   },
+  avatarImage: { width: '100%', height: '100%' },
   avatarText: { color: colors.white, fontSize: 20, fontWeight: '700' },
   profileInfo: { flex: 1, gap: 3 },
   name: { color: colors.text, fontSize: 13, fontWeight: '700' },

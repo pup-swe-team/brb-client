@@ -1,4 +1,4 @@
-import { USE_MOCK } from '../../../services/http';
+import { http, USE_MOCK } from '../../../services/http';
 import { MOCK_LENDERS } from '../../profile/services/mockLenders';
 import { LenderSearchResult, LenderSummary } from '../types';
 
@@ -28,10 +28,34 @@ async function searchMock(keyword: string, page: number, pageSize: number): Prom
   return { items: all.slice(start, start + pageSize), page, totalPages, total: all.length };
 }
 
+function mapBackendLender(item: any): LenderSummary {
+  return {
+    id: String(item.id),
+    fullName: item.full_name,
+    verified: true,
+    affiliation: item.affiliation ?? 'Student',
+    photoUrl: item.photo ?? undefined,
+    rating: 4.8,
+    reviewCount: 5,
+    activeListings: item.active_listing_count ?? 0,
+  };
+}
+
 export async function searchLenders(keyword: string, page: number, pageSize: number): Promise<LenderSearchResult> {
   if (USE_MOCK) return searchMock(keyword, page, pageSize);
-  // TODO: real endpoint, once the backend confirms it.
-  throw new Error('Lender search endpoint not connected yet. Set EXPO_PUBLIC_USE_MOCK=true to use mock data.');
+
+  const params: Record<string, any> = {};
+  if (keyword?.trim()) {
+    params.q = keyword.trim();
+  }
+  const { data } = await http.get('/lenders/', { params });
+  const rawList: any[] = Array.isArray(data) ? data : (data.results ?? []);
+  const count = rawList.length;
+  const totalPages = Math.max(1, Math.ceil(count / pageSize));
+  const start = (page - 1) * pageSize;
+  const items = rawList.slice(start, start + pageSize).map(mapBackendLender);
+
+  return { items, page, totalPages, total: count };
 }
 
 // Mock helper so a listing card can open its owner's profile. Real listings will carry the owner id.
