@@ -1,381 +1,147 @@
-# Run BRB (Frontend + Backend)
+# Running CoPUP Locally (Frontend + Backend)
 
-Default setup for testers: run the backend **on your own PC** and point it at the
-**shared Render Postgres** (`copup_db`). This gives the phone a backend on your
-LAN with no cold starts, while everyone still shares the same data. The support
-step is opening the Render dashboard to copy the connection string.
-
-`brb-client` (Expo Go on your phone) → `brb-server` (your PC) → Render Postgres.
-
-**Run order at a glance:** make sure `copup_db` is up → configure the `.env`
-files → start the backend → start the frontend → open it on the phone.
+A streamlined guide for running and performing manual QA testing on CoPUP across the backend (`brb-server`) and frontend (`brb-client`).
 
 ---
 
-## TL;DR
+## 1. First-Time Setup (New QA Testers / Fresh Clones)
 
-1. Copy the shared `copup_db` **External Database URL** from Render — **Step 1**.
-2. Copy both `.env.example` files and fill them in (that URL goes in
-   `brb-server/.env`) — **Step 2**.
-3. Backend: `uv sync` → `migrate` → `runserver 0.0.0.0:8000` — **Step 3**.
-4. Frontend: `npx expo start`, then scan the QR — **Step 4**, **Step 5**.
-5. Optional: review identity documents in the **Admin Portal** — **Step 6**.
+If setting up the project for the first time on a machine:
 
----
-
-## Prerequisites
-
-| Tool | Version | Check with |
-|---|---|---|
-| Node.js | 22+ | `node --version` |
-| Python | 3.12+ | `python --version` |
-| uv | 0.12+ | `uv --version` |
-| Expo Go (phone) | latest | App Store / Play Store |
-| Render dashboard access | — | log in at render.com with your account |
-
-No `bun` needed. This client uses `npm`; the backend uses `uv`.
-
----
-
-## Step 1 — Prepare the database (Render Postgres `copup_db`)
-
-1. Log in to the Render dashboard.
-2. Go to **Databases** → the shared `copup_db` instance.
-3. Open **Connections** and copy the **External Database URL**
-   (`postgresql://USER:PASSWORD@HOST:5432/DBNAME`).
-   - Copy the **External** string, not the Internal one — the Internal host only
-     resolves from inside Render's network and will fail from your PC.
-4. Put it in `brb-server/.env` as `DATABASE_URL` (Step 2a).
-5. A suspended free Postgres can take a few seconds to accept its first
-   connection. Running `migrate` in Step 3 wakes it.
-
-**Shared database warning:** you are writing to `copup_db`, which the whole team
-sees. Do **not** run the test suite against it — tests create and drop a whole
-`test_copup_db`. For tests, override to SQLite for that command only:
-
+### Backend (`brb-server`)
 ```powershell
-$env:DATABASE_URL="sqlite:///db.sqlite3"; uv run python manage.py test
-Remove-Item Env:\DATABASE_URL
-```
-
----
-
-## Step 2 — Configure the `.env` files
-
-Do this before starting anything. Both apps read `.env` on boot, so a wrong value
-here means the phone silently fails to reach the backend.
-
-### 2a. Backend — `brb-server/.env`
-
-```bash
 cd brb-server
-Copy-Item .env.example .env        # PowerShell
+
+# 1. Install Python dependencies (using uv)
+uv sync
+
+# 2. Create your local .env configuration
+Copy-Item .env.example .env
+
+# 3. Apply database migrations
+.venv\Scripts\python.exe manage.py migrate
 ```
 
-Fill it in:
-
-```bash
-# From Step 1 (Render → copup_db → External Database URL)
-DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME
-
-# Your PC's LAN IP (see "Appendix — Find your PC's LAN IP") so the phone is not rejected
-ALLOWED_HOSTS=localhost,127.0.0.1,<YOUR-PC-LAN-IP>
-```
-
-- This file is gitignored. Keep the live password out of commits, PRs, and chat.
-- SSL is automatic: `settings.py` sets `ssl_require=True` for any `postgres` URL.
-- Emails print to the terminal (`EMAIL_BACKEND=console`), so the verification link
-  shows up in the runserver window when you register.
-
-**Identity-document encryption key (skip unless you run in "production mode"):**
-
-`brb-server/.env` has a line `IDENTITY_DOCUMENT_ENCRYPTION_KEY=`. Two things to
-know:
-
-1. **Where the key comes from:** nowhere — you *make* it. It is a random string
-   the server uses to scramble ID photos before saving them. It isn't stored
-   anywhere in the project, so there is no place to "get" it from. Generate one
-   once, then paste the printed value into the `IDENTITY_DOCUMENT_ENCRYPTION_KEY=` line:
-
-   ```powershell
-   uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-   ```
-
-2. **When you actually need it:** only when you run the backend in **production
-   mode** (`DEBUG=False`). DEBUG is Django's "developer mode" switch — `DEBUG=True`
-   (the normal `runserver` default) means detailed error pages and relaxed
-   behavior; `DEBUG=False` means "act like the live website", which locks things
-   down. In developer mode the key stays empty and nothing breaks (photos are
-   saved as-is). In production mode a missing key deliberately crashes ID
-   uploads/reviews with `ImproperlyConfigured` ("fail closed") instead of saving
-   an unencrypted photo.
-
-   So you only touch this if you turned on production mode locally *or* you are
-   managing the live Render site.
-
-**The one rule that matters:** the **same** key must be used everywhere that
-reads the **same** database. If someone on the team already set a key (e.g. on
-the Render dashboard → `brb-server` → **Environment**), copy that exact value —
-don't generate a new one, or old photos become unreadable (`InvalidToken`). If
-no one has set one yet, generate it and share it with the team so everyone uses
-the same value.
-
-### 2b. Frontend — `brb-client/.env`
-
-```bash
+### Frontend (`brb-client`)
+```powershell
 cd brb-client
-Copy-Item .env.example .env        # PowerShell
-```
 
-Fill it in:
-
-```bash
-EXPO_PUBLIC_API_URL=http://<YOUR-PC-LAN-IP>:8000/api/v1
-EXPO_PUBLIC_USE_MOCK=false
-```
-
-- `EXPO_PUBLIC_USE_MOCK=false` calls the real backend; keep it `true` to run the
-  app with no server at all.
-- From a **phone**, `localhost` means the phone itself, not your PC — always use
-  your PC's LAN IP.
-- Restart `expo start` after editing this file (env vars are read on boot).
-
----
-
-## Step 3 — Run the backend (`brb-server`)
-
-```bash
-cd brb-server
-uv sync                             # install deps into .venv
-uv run python manage.py migrate     # FULL migration, no app labels (D-14)
-uv run python manage.py runserver 0.0.0.0:8000
-```
-
-- `0.0.0.0` lets phones on the same Wi-Fi reach the server; `localhost:8000`
-  only works on the machine itself.
-- The verification email prints in this terminal, so keep the window open while
-  you test.
-
----
-
-## Step 4 — Run the frontend (`brb-client`)
-
-```bash
-cd brb-client
+# 1. Install Node dependencies
 npm install
+
+# 2. Create your local .env configuration
+Copy-Item .env.example .env
+```
+
+---
+
+## 2. Daily Run Commands
+
+Once dependencies are installed, you only need to run the servers:
+
+### Terminal 1: Backend (`brb-server`)
+```powershell
+cd brb-server
+.venv\Scripts\python.exe manage.py runserver 0.0.0.0:8000
+```
+*(Or with `uv`: `uv run python manage.py runserver 0.0.0.0:8000`)*
+
+- The server runs at `http://localhost:8000` (or `http://<YOUR-LAN-IP>:8000`).
+- Verification emails print directly into this terminal window.
+
+### Terminal 2: Frontend (`brb-client`)
+```powershell
+cd brb-client
 npx expo start
 ```
 
-- After editing `.env`, restart `expo start` so it picks up the new values.
+- **Web Browser QA:** Press `w` in the terminal to open the web client at `http://localhost:8081`.
+- **Mobile Device QA (Expo Go):** Make sure your phone and PC are connected to the **same Wi-Fi network**, then scan the QR code with the Expo Go app (Android) or Camera app (iOS).
 
 ---
 
-## Step 5 — Open it on the phone (Expo Go)
+## 3. Environment Configuration (.env)
 
-1. Find your PC's LAN IP (see *Appendix — Find your PC's LAN IP*), then make sure
-   it is in `ALLOWED_HOSTS` in `brb-server/.env`.
-2. Confirm `brb-client/.env` uses that same IP in `EXPO_PUBLIC_API_URL`, and
-   `EXPO_PUBLIC_USE_MOCK=false`.
-3. Put the phone and PC on the **same Wi-Fi network**.
-4. Start the backend bound to all interfaces:
-   ```bash
-   uv run python manage.py runserver 0.0.0.0:8000
-   ```
-5. Restart the frontend so it picks up `.env`, then scan the QR:
-   ```bash
-   npx expo start
-   ```
-6. Verify from the **phone's browser**: open
-   `http://<YOUR-PC-LAN-IP>:8000/api/v1/auth/login/`. A `405` / DRF page means
-   the phone can reach the backend (see *Troubleshooting* if it does not load).
-7. Register / log in. Your account is stored in the shared `copup_db`, so the
-   team can see it.
+Each tester must configure their local `.env` files:
 
-CORS does not apply to Expo Go; it only affects `expo start --web`.
+### Backend (`brb-server/.env`)
+```ini
+DEBUG=True
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME  # Shared Render Postgres or sqlite:///db.sqlite3
+ALLOWED_HOSTS=localhost,127.0.0.1,<YOUR-PC-LAN-IP>
+JWT_SECRET=your-jwt-secret-key-at-least-32-bytes
+```
 
-**Camera / photo permission on iOS (BE-BUG-0005):**
-
-- The first time you tap **Take photo**, iOS shows a camera permission prompt —
-  tap **Allow**, and only then does the camera open. Android 6+ shows the same
-  prompt for the camera.
-- If you previously tapped **Don't Allow**, iOS will **not** re-prompt. Enable it
-  in the system Settings, then come back and tap the button again:
-  - **Standalone app build:** Settings → *BRB* → **Camera** (and **Photos**
-    for *Choose photo*).
-  - **Expo Go:** Settings → *Expo Go* → **Camera** / **Photos**.
-- With no permission, the app now shows a clear message under the upload card
-  instead of crashing.
-- In Expo Go nothing else is needed — the prompt uses Expo Go's own descriptions.
-  The camera/photo strings in `app.json` (the `expo-image-picker` plugin) only
-  apply to a **native build** (`npx expo run:ios` / `eas build`): they land in
-  Info.plist at build time, so rebuild after editing `app.json`.
+### Frontend (`brb-client/.env`)
+```ini
+EXPO_PUBLIC_API_URL=http://<YOUR-PC-LAN-IP>:8000/api/v1
+EXPO_PUBLIC_USE_MOCK=false
+```
+> **Tip for Phone Testing:** Find your LAN IP using `ipconfig` (IPv4 address under Wi-Fi/Ethernet, e.g., `192.168.100.194`). Use this IP in both `.env` files so your phone can communicate with your PC backend.
 
 ---
 
-## Step 6 — Admin Portal (approve / reject identity documents)
+## 4. Admin Portal Access
 
-Two admin interfaces exist, and the difference matters:
+The Admin Portal is used to review identity documents, manage unreturned cases, and supervise users.
 
-| Path | What it is | Styling |
-|---|---|---|
-| **`/portal/`** | **This is the Admin Portal** (BE-BUG-0006) — the team's custom, styled review UI (CoPUPAdmin). Sign-in → dashboard → verification queue → review → approve/reject. | Styled (custom CSS). **Test this one.** |
-| **`/admin/`** | Django's **default admin** that ships with the framework — general CRUD (users, lookup tables), still used for maintenance. | Plain default Django styling (this is the "old" look). |
-
-Testers approve/reject the IDs users submit in the **Admin Portal** at `/portal/`.
-It is a browser screen, so testers open it on a PC or phone browser — there is
-no admin UI inside the app.
-
-1. **Create an admin account** (once). The username field is **email**, not a
-   handle:
-   ```bash
+1. **Create an Admin Account (once):**
+   ```powershell
    cd brb-server
-   uv run python manage.py createsuperuser
-   # Email: admin@pup.edu.ph   (must end in @pup.edu.ph)
+   .venv\Scripts\python.exe manage.py createsuperuser
    ```
-   `createsuperuser` sets `is_staff=True` automatically — that flag is what the
-   admin gates on (D-03), so no extra setup is needed. Admin accounts may **only**
-   use `@pup.edu.ph`; anything else (e.g. `@gmail.com`) is refused with an error.
+   *Email must use the `@pup.edu.ph` domain (e.g., `admin@pup.edu.ph`).*
 
-2. **Open the Admin Portal** with the backend running
-   (`uv run python manage.py runserver 0.0.0.0:8000`):
-   - On your PC: `http://localhost:8000/portal/`
-   - From the phone / another device: `http://<YOUR-PC-LAN-IP>:8000/portal/`
-     (the same LAN IP you put in `ALLOWED_HOSTS`).
-
-3. **Log in** with the email + password from step 1. You land on the **Dashboard**;
-   open **Verification Queue** from the sidebar to see pending submissions.
-
-4. **Review a submission.** Pending tab → open a member's **Review** page → **Approve**
-   or **Reject** (a rejection reason is required). The status updates the member's
-   profile and the user gets a notification. (The old default Django admin at
-   `/admin/` also has a bulk **Identity documents** action — the portal and Admin
-   write to the same audit trail.)
-
-**Notes:**
-
-- `createsuperuser` writes to whatever `DATABASE_URL` points at. In the default
-  setup that is the shared `copup_db`, so the admin account is visible to the
-  whole team — coordinate before creating more than one.
-- The admin's **Download Document** link works from your browser session: the
-  endpoint accepts both JWT and Django Admin session authentication (D-18), and
-  every view/download is recorded in **Admin access logs** (CP-107 / FR14).
-- Every view, approval and rejection writes an `AdminAccessLog` row
-  (CP-107 / FR14), which you can inspect under **Admin access logs**.
-- If you only want a throwaway admin, point `DATABASE_URL` at SQLite for that
-  session (see the SQLite override in Step 1) rather than touching `copup_db`.
-
-**Key facts:**
-
-- **Same account, same data.** It gates on the same `is_staff` flag, so the
-  `createsuperuser` account from Step 6 signs in there too. A regular member
-  account is refused at sign-in ("Only administrator accounts can sign in
-  here.").
-- **Same flow, same audit trail.** Approving/rejecting calls the same service as
-  the Admin action, so the user's in-app notification, email and `AdminAccessLog`
-  entries are identical; merely opening a review page writes a `view` log row.
-- The sidebar shows the remaining admin areas (Users, Reports, Content
-  Moderation, System Settings, Audit Log, …) as **planned for a later sprint** —
-  only Dashboard and Verification Queue are wired up so far.
+2. **Open the Portal:**
+   - URL: `http://localhost:8000/portal/`
+   - Sign in with your admin credentials to access the Verification Queue and Dashboard.
+   - Standard Django admin is also available at `http://localhost:8000/admin/`.
 
 ---
 
-## Step 7 — End-to-end smoke test
+## 5. Manual QA Testing Flow (Sprint 3)
 
-1. Backend up → open `http://localhost:8000/api/v1/auth/login/` on the PC and
-   confirm it responds.
-2. Frontend up (mock off) → register with a PUP webmail.
-3. Verify via the printed link in the backend terminal.
-4. Log in → you should land on the app's Home tab.
-5. If it still mocks, double-check `.env` and restart `expo start`.
+### A. Borrower Flow & Verification
+1. **Register** using a PUP webmail (`@iskolarngbayan.pup.edu.ph` for students, `@pup.edu.ph` for faculty/staff).
+2. Copy the **email verification link** printed in the backend terminal and open it in your browser.
+3. **Log in** ➔ lands on the **Borrower Dashboard** showing your borrowing limit (`0/3 items held`) and empty order sections.
+4. **Identity Verification:** Go to Profile ➔ Verify Identity ➔ Upload ID document with consent checked. Approve it via the Admin Portal (`/portal/`) to enable borrowing.
 
----
+### B. Lender Flow & Listing Management
+1. In Profile, tap **"Apply for Lender Role"** ➔ Lender status is granted immediately.
+2. The **Dashboard Switch** appears, allowing you to toggle between **Borrower** and **Lender** views.
+3. Tap **"Create Listing"** (or "+" tab) to create an available item with pickup location and date range.
+4. Manage listings via **Lender Dashboard ➔ My Listings** (edit fields, deactivate, or delete).
 
-## Alternative — point the phone at the deployed Render backend
+### C. Borrow Request & Acceptance (CP-501, CP-502)
+1. As Borrower, open the listing details and tap **"Request to Borrow"**. Select dates within the availability window.
+2. The order appears under **"Requested"** on the Borrower Dashboard.
+3. Switch to the Lender account ➔ open **Lender Dashboard ➔ Incoming Requests** ➔ tap **"Accept"** (order becomes `Confirmed`) or **"Decline"**.
 
-If you would rather not run the backend at all, point the phone directly at the
-already-deployed service:
+### D. Handover Code Verification (CP-504)
+1. Open the Confirmed order.
+2. **Lender:** Taps "Handover Code" to generate a 6-digit OTP (valid for 3 hours, with live countdown).
+3. **Borrower:** Taps "Enter Handover Code", inputs the 6 digits, and confirms.
+4. Order status transitions to **`Active`**.
 
-1. Render dashboard → the `brb-server` Web Service → copy its URL.
-2. In `brb-client/.env`:
-   ```bash
-   EXPO_PUBLIC_API_URL=https://<service>.onrender.com/api/v1
-   EXPO_PUBLIC_USE_MOCK=false
-   ```
-3. Restart `npx expo start` and scan the QR.
-4. The free service **sleeps when idle** and the first request can take 30–60 s.
-   The app's HTTP timeout is **15 s** (`src/services/http.ts`), so requests sent
-   before it wakes fail with the same generic message and leave no log. Wake it
-   first by opening `https://<service>.onrender.com/api/v1/auth/login/` in a
-   browser (or click **Restart** on the service) and wait for a response.
+### E. Return Code & Damage Reporting (CP-505)
+1. When return time arrives, open the Active order.
+2. **Borrower:** Taps "Return Code" to generate a 6-digit return OTP.
+3. **Lender:** Taps "Confirm Return" and inputs the code:
+   - **No Damage:** Order immediately transitions to **`Completed`**.
+   - **Damage Flagged:** Check "Report damage / missing item", enter a description, and confirm. Order transitions to **`Disputed`**.
 
-The Render service uses the same `copup_db`, so data matches the default setup.
-If ID uploads fail on the deployed service, its `IDENTITY_DOCUMENT_ENCRYPTION_KEY`
-env var is probably missing — add it in Render → `brb-server` → **Environment**
-(see the key note in **Step 2a**).
-
----
-
-## Troubleshooting — "Something went wrong. Please try again."
-
-That message is the fallback in `extractApiError` (`src/services/http.ts`) and
-means the app got **no response at all** — a network/connection problem, not a
-backend rejection. That is why the backend log stays empty.
-
-Checklist:
-
-1. `.env` uses your **PC's LAN IP**, never `localhost` from a phone.
-2. `expo start` was restarted after editing `.env`.
-3. Phone and PC are on the same Wi-Fi.
-4. Firewall allows inbound port 8000 on the PC.
-5. `ALLOWED_HOSTS` includes the LAN IP you used.
-6. Backend is running (`runserver 0.0.0.0:8000` still open in a terminal).
-7. Phone browser can open `http://<YOUR-PC-LAN-IP>:8000/api/v1/auth/login/`.
-
-If `manage.py migrate` fails to connect, re-check that you copied the
-**External** URL — the Internal host only resolves from inside Render and will
-fail from your PC. A suspended Render Postgres can also take a few seconds to
-accept its first connection; the connection itself wakes it.
+### F. Order Cancellation (CP-503)
+- Either party can cancel a `Requested` or `Confirmed` order before handover by tapping **"Cancel Order"** and selecting a reason.
+- Active orders cannot be cancelled.
 
 ---
 
-## Appendix — Find your PC's LAN IP
+## 6. Troubleshooting Checklist
 
-The phone reaches your PC by its address on your Wi-Fi network — **never**
-`127.0.0.1`/`localhost`, which always means "this device".
-
-**Windows (PowerShell):**
-```powershell
-ipconfig
-```
-Read the `IPv4 Address` under `Wireless LAN adapter Wi-Fi` (or `Ethernet`) —
-whichever is on the same network as your phone (e.g. `192.168.1.25`). One-line
-version:
-```powershell
-(Get-NetIPAddress -AddressFamily IPv4 |
-  Where-Object InterfaceAlias -NotMatch 'Loopback').IPAddress
-```
-
-**macOS:** System Settings → Network → Wi-Fi → Details, or:
-```bash
-ipconfig getifaddr en0
-```
-
-**Linux:**
-```bash
-hostname -I | awk '{print $1}'
-```
-
-Rules:
-- Pick the address on the phone's network — usually `192.168.x.x` or `10.x.x.x`.
-- Ignore `127.0.0.1`, `169.254.x.x`, and any WSL/VM/VPN adapter (e.g.
-  `vEthernet`, `Docker`, `Tailscale`).
-- Verify from the phone's browser: `http://<LAN-IP>:8000/api/v1/auth/login/`
-  should respond.
-- The IP can change when you reconnect to Wi-Fi — re-check it if the app stops
-  connecting.
-
----
-
-See `docs/BACKEND_CONNECTION.md` for the endpoint contract, payloads, and the
-placeholders that still need work (order endpoints, deep link, refresh
-handling).
+| Issue | Solution |
+|---|---|
+| **"Something went wrong. Please try again."** | The frontend cannot reach the backend. Check that the backend is running (`runserver 0.0.0.0:8000`), both devices share the same Wi-Fi, and the IP in `brb-client/.env` matches `ipconfig`. |
+| **Email verification link not arriving** | Emails are captured locally. Check the terminal running `runserver` to copy the verification link. |
+| **Database connection error on start** | Ensure `copup_db` on Render is active, or use local SQLite (`DATABASE_URL=sqlite:///db.sqlite3` in `brb-server/.env`). |
+| **Changes not reflecting in Expo** | Press `r` in the Expo terminal to reload, or restart with `npx expo start -c` to clear the bundler cache. |
