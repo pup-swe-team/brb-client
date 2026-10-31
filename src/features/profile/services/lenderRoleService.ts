@@ -21,5 +21,5 @@ export async function applyForLenderRole(): Promise<void> {
     mockIsLender = true;
     return;
   }
-  await http.post('/users/me/lender-role/apply/'); // TODO: confirm endpoint
+  await http.post('/auth/apply-lender/'); // TODO: confirm endpoint
 }
