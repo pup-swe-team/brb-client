@@ -1,12 +1,7 @@
-import { http, USE_MOCK } from '../../../services/http';
-import { Order, OrderRole } from '../../../shared/types';
+import { extractApiError, getApiErrorCode, http, USE_MOCK } from '../../../services/http';
+import { Order, OrderRole, OrderStatus } from '../../../shared/types';
 
 // PATTERN FOR ALL FEATURES: one function per endpoint; mock first, real call behind the same signature.
-//
-// SPRINT 3 CONTRACT. Every ticket below has its function(s) declared here with a
-// working mock, so screens can be built before the backend exists. Edit ONLY the
-// function(s) marked with your ticket. Never change another ticket's signature
-// without telling its owner. All real endpoints are unconfirmed (TODO).
 
 /* =========================================================
    MOCK DATA (shared). Mirrors the dashboards in the HTML screens.
@@ -39,6 +34,54 @@ function mockSetStatus(id: string, status: Order['status']): Order {
   return next;
 }
 
+function toTitleCase(s: string): OrderStatus {
+  if (!s) return 'Requested';
+  const lower = s.toLowerCase();
+  const capitalized = lower.charAt(0).toUpperCase() + lower.slice(1);
+  return capitalized as OrderStatus;
+}
+
+export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
+  if (!raw) return raw;
+  const id = String(raw.id ?? raw.order_id ?? '');
+  const listingTitle = raw.listingTitle || raw.listing_title || raw.listing?.title || 'Listing';
+  const status = toTitleCase(raw.status?.name || raw.status || 'Requested');
+  const startDate = raw.startDate || raw.start_date || '';
+  const endDate = raw.endDate || raw.end_date || '';
+
+  const borrowerName = raw.borrower?.full_name || raw.borrower_name || '';
+  const lenderName = raw.listing?.lender?.full_name || raw.lender_name || '';
+  let counterpart = raw.counterpart || '';
+  if (!counterpart) {
+    if (defaultRole === 'Borrower') {
+      counterpart = lenderName || 'Lender';
+    } else if (defaultRole === 'Lender') {
+      counterpart = borrowerName || 'Borrower';
+    } else {
+      counterpart = lenderName || borrowerName || 'Counterpart';
+    }
+  }
+
+  const role: OrderRole = defaultRole || (raw.role as OrderRole) || 'Borrower';
+  const orderNumber = raw.orderNumber || (id ? `BRB-${String(id).padStart(4, '0')}` : undefined);
+  const pickupLocation = raw.pickupLocation || raw.pickup_location || raw.listing?.pickup_location?.name || '';
+  const rawPrice = raw.pricePerDay ?? raw.price_per_day ?? raw.rate_per_day ?? raw.listing?.rate_per_day;
+  const pricePerDay = rawPrice != null ? Number(rawPrice) : undefined;
+
+  return {
+    id,
+    listingTitle,
+    status,
+    startDate,
+    endDate,
+    counterpart,
+    role,
+    orderNumber,
+    pickupLocation,
+    pricePerDay,
+  };
+}
+
 /* =========================================================
    SHARED READS (owner: Danielo, CP-201). Do not change signatures.
 ========================================================= */
@@ -49,16 +92,54 @@ export const BORROWING_LIMIT = 3;
 // All of the signed-in user's orders; pass a role to get only one side.
 export async function getMyOrders(role?: OrderRole): Promise<Order[]> {
   if (USE_MOCK) return role ? mockOrders.filter((o) => o.role === role) : mockOrders;
-  const { data } = await http.get<Order[]>('/orders/', { params: role ? { role } : undefined }); // TODO: confirm endpoint
-  return data;
+  try {
+    const { data } = await http.get<any[]>('/orders/', { params: role ? { role: role.toLowerCase() } : undefined });
+    if (Array.isArray(data)) {
+      return data.map((item) => normalizeOrder(item, role));
+    }
+  } catch {
+    // Fallback to dashboard aggregation endpoints if /orders/ list is not available
+    if (role === 'Borrower') {
+      const { data } = await http.get<any>('/dashboard/borrower/');
+      const all: Order[] = [];
+      const ordersObj = data?.orders || {};
+      for (const key of Object.keys(ordersObj)) {
+        if (key !== 'past' && Array.isArray(ordersObj[key])) {
+          for (const item of ordersObj[key]) {
+            all.push(normalizeOrder(item, 'Borrower'));
+          }
+        }
+      }
+      return all;
+    } else if (role === 'Lender') {
+      const { data } = await http.get<any>('/dashboard/lender/');
+      const all: Order[] = [];
+      for (const section of ['incoming_requests', 'ongoing_lends', 'past_orders']) {
+        if (Array.isArray(data?.[section])) {
+          for (const item of data[section]) {
+            all.push(normalizeOrder(item, 'Lender'));
+          }
+        }
+      }
+      return all;
+    }
+  }
+  return [];
 }
 
-export async function getOrder(orderId: string): Promise<Order> {
+export async function getOrder(orderId: string, role?: OrderRole): Promise<Order> {
   if (USE_MOCK) return mockFind(orderId);
-  const { data } = await http.get<Order>(`/orders/${orderId}/`); // TODO: confirm endpoint
-  return data;
+  try {
+    const { data } = await http.get<any>(`/orders/${orderId}/`);
+    return normalizeOrder(data, role);
+  } catch (err: any) {
+    if (mockOrders.some((o) => o.id === orderId)) {
+      return mockFind(orderId);
+    }
+    const message = extractApiError(err);
+    throw new Error(message);
+  }
 }
-
 
 /* =========================================================
    CP-501  Request to borrow a listing        (owner: Member B)
@@ -83,10 +164,19 @@ export async function createBorrowRequest(input: BorrowRequestInput): Promise<Or
     mockOrders = [...mockOrders, order];
     return order;
   }
-  const { data } = await http.post<Order>('/orders/', input); // TODO: confirm endpoint
-  return data;
+  const payload = {
+    listing_id: Number(input.listingId),
+    start_date: input.startDate,
+    end_date: input.endDate,
+  };
+  try {
+    const { data } = await http.post<any>('/orders/', payload);
+    return normalizeOrder(data, 'Borrower');
+  } catch (error: any) {
+    const message = extractApiError(error);
+    throw new Error(message);
+  }
 }
-
 
 /* =========================================================
    CP-502  Accept or decline a borrow request  (owner: Member B)
@@ -94,10 +184,14 @@ export async function createBorrowRequest(input: BorrowRequestInput): Promise<Or
 
 export async function respondToRequest(orderId: string, decision: 'accept' | 'decline'): Promise<Order> {
   if (USE_MOCK) return mockSetStatus(orderId, decision === 'accept' ? 'Confirmed' : 'Declined');
-  const { data } = await http.post<Order>(`/orders/${orderId}/respond/`, { decision }); // TODO: confirm endpoint
-  return data;
+  try {
+    const { data } = await http.post<any>(`/orders/${orderId}/${decision}/`);
+    return normalizeOrder(data, 'Lender');
+  } catch (error: any) {
+    const message = extractApiError(error);
+    throw new Error(message);
+  }
 }
-
 
 /* =========================================================
    CP-503  Cancel a Requested or Confirmed order  (owner: Danielo)
@@ -106,10 +200,15 @@ export async function respondToRequest(orderId: string, decision: 'accept' | 'de
 // Both parties can cancel before pickup. `reason` is required, `details` optional (HTML 41).
 export async function cancelOrder(orderId: string, reason: string, details?: string): Promise<Order> {
   if (USE_MOCK) return mockSetStatus(orderId, 'Cancelled');
-  const { data } = await http.post<Order>(`/orders/${orderId}/cancel/`, { reason, details }); // TODO: confirm endpoint
-  return data;
+  const fullReason = details && details.trim() ? `${reason}: ${details.trim()}` : reason;
+  try {
+    const { data } = await http.post<any>(`/orders/${orderId}/cancel/`, { reason: fullReason });
+    return normalizeOrder(data);
+  } catch (error: any) {
+    const message = extractApiError(error);
+    throw new Error(message);
+  }
 }
-
 
 /* =========================================================
    CP-504  Generate and validate handover code  (owner: Member B)
@@ -135,8 +234,16 @@ const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
 
 export async function generateHandoverCode(orderId: string): Promise<OrderCode> {
   if (USE_MOCK) return { code: MOCK_CODE, expiresAt: new Date(Date.now() + THREE_HOURS_MS).toISOString() };
-  const { data } = await http.post<OrderCode>(`/orders/${orderId}/handover-code/`); // TODO: confirm endpoint
-  return data;
+  try {
+    const { data } = await http.post<any>(`/orders/${orderId}/handover-code/generate/`);
+    return {
+      code: data.code_value || data.code,
+      expiresAt: data.expires_at || data.expiresAt || new Date(Date.now() + THREE_HOURS_MS).toISOString(),
+    };
+  } catch (error: any) {
+    const message = extractApiError(error);
+    throw new Error(message);
+  }
 }
 
 // Throws OrderCodeError. On success the order becomes Active.
@@ -145,10 +252,29 @@ export async function confirmHandover(orderId: string, code: string): Promise<Or
     if (code !== MOCK_CODE) throw new OrderCodeError('incorrect');
     return mockSetStatus(orderId, 'Active');
   }
-  const { data } = await http.post<Order>(`/orders/${orderId}/handover-confirm/`, { code }); // TODO: confirm endpoint
-  return data;
+  try {
+    const { data } = await http.post<any>(`/orders/${orderId}/handover-code/verify/`, { code });
+    return normalizeOrder(data, 'Borrower');
+  } catch (error: any) {
+    const codeErr = getApiErrorCode(error);
+    const detail = (error?.response?.data?.code || error?.response?.data?.detail || '') as string;
+    const lower = (typeof detail === 'string' ? detail : '').toLowerCase();
+    if (codeErr === 'invalid_code' || lower.includes('invalid') || lower.includes('incorrect')) {
+      throw new OrderCodeError('incorrect');
+    }
+    if (codeErr === 'code_expired' || lower.includes('expire')) {
+      throw new OrderCodeError('expired');
+    }
+    if (codeErr === 'code_used' || lower.includes('already been used') || lower.includes('used')) {
+      throw new OrderCodeError('used');
+    }
+    if (error?.response?.status === 429 || lower.includes('locked')) {
+      throw new OrderCodeError('locked');
+    }
+    const message = extractApiError(error);
+    throw new Error(message);
+  }
 }
-
 
 /* =========================================================
    CP-505  Generate and validate return code  (owner: Member B)
@@ -158,15 +284,52 @@ export async function confirmHandover(orderId: string, code: string): Promise<Or
 
 export async function generateReturnCode(orderId: string): Promise<OrderCode> {
   if (USE_MOCK) return { code: '531846', expiresAt: new Date(Date.now() + THREE_HOURS_MS).toISOString() };
-  const { data } = await http.post<OrderCode>(`/orders/${orderId}/return-code/`); // TODO: confirm endpoint
-  return data;
+  try {
+    const { data } = await http.post<any>(`/orders/${orderId}/return-code/generate/`);
+    return {
+      code: data.code_value || data.code,
+      expiresAt: data.expires_at || data.expiresAt || new Date(Date.now() + THREE_HOURS_MS).toISOString(),
+    };
+  } catch (error: any) {
+    const message = extractApiError(error);
+    throw new Error(message);
+  }
 }
 
-export async function confirmReturn(orderId: string, code: string, options: { damaged: boolean }): Promise<Order> {
+export async function confirmReturn(
+  orderId: string,
+  code: string,
+  options: { damaged: boolean; description?: string }
+): Promise<Order> {
   if (USE_MOCK) {
     if (code !== '531846') throw new OrderCodeError('incorrect');
     return mockSetStatus(orderId, options.damaged ? 'Disputed' : 'Completed');
   }
-  const { data } = await http.post<Order>(`/orders/${orderId}/return-confirm/`, { code, damaged: options.damaged }); // TODO: confirm endpoint
-  return data;
+  try {
+    const payload = {
+      code,
+      flagged: options.damaged,
+      dispute_description: options.description || '',
+    };
+    const { data } = await http.post<any>(`/orders/${orderId}/return-code/verify/`, payload);
+    return normalizeOrder(data, 'Lender');
+  } catch (error: any) {
+    const codeErr = getApiErrorCode(error);
+    const detail = (error?.response?.data?.code || error?.response?.data?.detail || '') as string;
+    const lower = (typeof detail === 'string' ? detail : '').toLowerCase();
+    if (codeErr === 'invalid_code' || lower.includes('invalid') || lower.includes('incorrect')) {
+      throw new OrderCodeError('incorrect');
+    }
+    if (codeErr === 'code_expired' || lower.includes('expire')) {
+      throw new OrderCodeError('expired');
+    }
+    if (codeErr === 'code_used' || lower.includes('already been used') || lower.includes('used')) {
+      throw new OrderCodeError('used');
+    }
+    if (error?.response?.status === 429 || lower.includes('locked')) {
+      throw new OrderCodeError('locked');
+    }
+    const message = extractApiError(error);
+    throw new Error(message);
+  }
 }
