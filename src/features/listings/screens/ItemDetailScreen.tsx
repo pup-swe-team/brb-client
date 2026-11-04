@@ -236,7 +236,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
 
   return (
     <View style={styles.screen}>
-      <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
+      <StatusBar barStyle="light-content" />
 
       <View style={styles.header} />
 

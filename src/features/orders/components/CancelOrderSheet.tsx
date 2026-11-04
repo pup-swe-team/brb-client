@@ -159,7 +159,7 @@ function SheetBody({ order, role, onClose, onChanged }: Props) {
               <View style={s.buttonCell}>
                 <Button
                   title="Confirm Cancel"
-                  variant="destructive"
+                  variant="primary"
                   onPress={confirm}
                   loading={submitting}
                 />

@@ -167,7 +167,7 @@ export default function AddItemScreen({ navigation, route }: any) {
   }
 
   return <View style={s.screen}>
-    <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
+    <StatusBar barStyle="light-content" />
     {header}
     <ScrollView style={s.scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       {showErrors && Object.values(errors).some(v => Array.isArray(v) ? v.length > 0 : !!v) && <View style={s.banner}><Ionicons name="warning-outline" size={18} color={ERROR}/><Text style={s.bannerText}><Text style={s.bannerStrong}>Fix the highlighted fields</Text> before posting your item.</Text></View>}

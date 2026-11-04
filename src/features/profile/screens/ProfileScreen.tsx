@@ -402,22 +402,6 @@ export default function ProfileScreen({ navigation }: any) {
                 )}
               </View>
 
-              <Text style={styles.affiliation}>
-                {user?.affiliation ?? ''}
-              </Text>
-
-              <View style={styles.ratingRow}>
-                <Ionicons
-                  name="star"
-                  size={12}
-                  color={colors.gold}
-                />
-
-                <Text style={styles.rating}>
-                  4.80
-                </Text>
-              </View>
-
               {(user?.street_address || user?.home_address) ? (
                 <View style={styles.metaRow}>
                   <Ionicons name="location-outline" size={11} color={colors.textSecondary} />
@@ -620,7 +604,7 @@ export default function ProfileScreen({ navigation }: any) {
                 style={styles.notificationText}
                 numberOfLines={1}
               >
-                Your Lab Apron has been return by
+                Your Lab Apron has been returned by
                 Danielo Kim Ang
               </Text>
 
@@ -838,23 +822,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  affiliation: {
-    color: colors.textSecondary,
-    fontSize: 9,
-    marginBottom: 3,
-  },
-
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-
-  rating: {
-    color: colors.text,
-    fontSize: 9,
-    fontWeight: '600',
-  },
 
 
 

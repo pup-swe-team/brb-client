@@ -237,14 +237,14 @@ export default function SearchScreen({ navigation }: any) {
             ListEmptyComponent={
               !loading && !error ? (
                 <NoResults keyword={query} hasFilters={activeFilters > 0} onClear={clearAll} />
-              ) : null
+              ) : undefined
             }
             ListFooterComponent={
               loadingMore ? (
                 <ActivityIndicator style={{ marginVertical: spacing.md }} color={colors.primary} />
               ) : items.length > 0 && page >= totalPages ? (
                 <Text style={s.end}>You have reached the end</Text>
-              ) : null
+              ) : undefined
             }
           />
         )}

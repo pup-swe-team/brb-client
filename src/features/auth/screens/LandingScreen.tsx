@@ -10,14 +10,24 @@ import {
 } from 'react-native';
 
 import { colors } from '../../../theme';
+import { getAccessToken } from '../../../services/http';
 
 export default function LandingScreen({ navigation }: any) {
+  // Landing is always the first screen. If a session is already saved, Get
+  // Started resumes it (Tabs); otherwise it goes to Login.
+  const handleGetStarted = async () => {
+    try {
+      const token = await getAccessToken();
+      navigation.navigate(token ? 'Tabs' : 'Login');
+    } catch {
+      navigation.navigate('Login');
+    }
+  };
+
   return (
     <View style={styles.screen}>
 
       <StatusBar
-        translucent
-        backgroundColor="transparent"
         barStyle="light-content"
       />
 
@@ -53,7 +63,7 @@ export default function LandingScreen({ navigation }: any) {
               styles.button,
               pressed && styles.buttonPressed,
             ]}
-            onPress={() => navigation.navigate('Login')}
+            onPress={handleGetStarted}
           >
             <Text style={styles.buttonText}>
               Get Started

@@ -1,11 +1,12 @@
 import React, { useRef } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import type { TextInputInstance } from 'react-native';
 import { colors, radius, text } from '../../theme';
 
 // One-time handover/return code entry. Parent owns value, error and locked state.
 type Props = { value: string; onChange: (v: string) => void; length?: number; error?: string; disabled?: boolean };
 export function CodeInput({ value, onChange, length = 6, error, disabled }: Props) {
-  const ref = useRef<TextInput>(null);
+  const ref = useRef<TextInputInstance>(null);
   return (
     <View style={{ gap: 8, alignItems: 'center' }}>
       <Pressable onPress={() => ref.current?.focus()} style={s.row}>

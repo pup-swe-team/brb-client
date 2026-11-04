@@ -82,7 +82,6 @@ import DeactivateAccountScreen from '../features/profile/screens/DeactivateAccou
 ========================================================= */
 
 import { ScreenContainer } from '../shared/components';
-import { getAccessToken } from '../services/http';
 import { colors, spacing } from '../theme';
 
 /* =========================================================
@@ -336,27 +335,10 @@ const linking: LinkingOptions<RootStackParamList> = {
 ========================================================= */
 
 export function RootNavigator() {
-  const [initialRoute, setInitialRoute] = React.useState<keyof RootStackParamList | null>(null);
-
-  React.useEffect(() => {
-    let active = true;
-    getAccessToken()
-      .then((token) => {
-        if (!active) return;
-        setInitialRoute(token ? 'Tabs' : 'Landing');
-      })
-      .catch(() => {
-        if (!active) return;
-        setInitialRoute('Landing');
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  if (!initialRoute) {
-    return null;
-  }
+  // Always open on the Landing page. A saved session is resumed from there
+  // (Landing -> Get Started goes straight to Tabs), so testers never skip the
+  // Landing page just because a token is still stored on the device.
+  const initialRoute: keyof RootStackParamList = 'Landing';
 
   return (
     <NavigationContainer

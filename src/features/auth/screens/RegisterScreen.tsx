@@ -7,6 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 
 import { ScreenContainer, Input } from '../../../shared/components';
 import { colors, spacing } from '../../../theme';
@@ -31,7 +32,7 @@ export default function RegisterScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
 
   // Keep the active field visible above the keyboard.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const fieldY = useRef<Record<string, number>>({});
 
   const scrollToField = (key: string) => {

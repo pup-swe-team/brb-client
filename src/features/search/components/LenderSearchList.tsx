@@ -72,13 +72,13 @@ export function LenderSearchList({ query, onOpen, onClear }: Props) {
           onEndReached={loadMore}
           onEndReachedThreshold={0.4}
           refreshControl={<RefreshControl refreshing={loading && items.length > 0} onRefresh={() => fetchPage(1, true)} />}
-          ListEmptyComponent={!loading && !error ? <NoResults keyword={query} hasFilters={false} onClear={onClear} /> : null}
+          ListEmptyComponent={!loading && !error ? <NoResults keyword={query} hasFilters={false} onClear={onClear} /> : undefined}
           ListFooterComponent={
             loadingMore ? (
               <ActivityIndicator style={{ marginVertical: spacing.md }} color={colors.primary} />
             ) : items.length > 0 && page >= totalPages ? (
               <Text style={s.end}>You have reached the end</Text>
-            ) : null
+            ) : undefined
           }
         />
       )}

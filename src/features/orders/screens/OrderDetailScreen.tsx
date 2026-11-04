@@ -33,18 +33,16 @@ export default function OrderDetailScreen({ navigation, route }: any) {
     setLoading(true);
     setError('');
 
-    getOrder(orderId)
+    // Pass the viewer's role so the counterpart is mapped correctly: a Lender
+    // sees the Borrower, a Borrower sees the Lender.
+    getOrder(orderId, roleParam)
       .then((loaded) => {
-        console.log('[OrderDetail] Requested ID:', orderId);
-        console.log('[OrderDetail] Loaded order:', loaded);
-
         if (active) {
           setOrder(loaded);
           setError('');
         }
       })
       .catch((e) => {
-        console.error('[OrderDetail] Failed to load order:', e);
         if (active) {
           setOrder(null);
           setError('We couldn’t load this order. Please try again.');
@@ -57,7 +55,7 @@ export default function OrderDetailScreen({ navigation, route }: any) {
     return () => {
       active = false;
     };
-  }, [orderId]);
+  }, [orderId, roleParam]);
 
   useFocusEffect(load);
 

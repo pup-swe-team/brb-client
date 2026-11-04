@@ -17,7 +17,6 @@ export default function SignUpMessageScreen({
     <View style={styles.screen}>
 
       <StatusBar
-        backgroundColor={colors.primary}
         barStyle="light-content"
       />
 

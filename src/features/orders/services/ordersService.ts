@@ -57,8 +57,14 @@ export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
   const startDate = raw.startDate || raw.start_date || '';
   const endDate = raw.endDate || raw.end_date || '';
 
-  const borrowerName = raw.borrower?.full_name || raw.borrower_name || '';
-  const lenderName = raw.listing?.lender?.full_name || raw.lender_name || '';
+  const borrowerName =
+    raw.borrower?.full_name || raw.borrower_name || raw.borrower_full_name || '';
+  const lenderName =
+    raw.listing?.lender?.full_name ||
+    raw.lender?.full_name ||
+    raw.lender_name ||
+    raw.lender_full_name ||
+    '';
   let counterpart = raw.counterpart || '';
   if (!counterpart) {
     if (defaultRole === 'Borrower') {
