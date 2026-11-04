@@ -152,42 +152,126 @@ export async function getOrder(orderId: string, role?: OrderRole): Promise<Order
 }
 
 /* =========================================================
-   CP-501  Request to borrow a listing        (owner: Member B)
+   CP-501 Request to borrow a listing (owner: Member B)
 ========================================================= */
 
 export interface BorrowRequestInput {
   listingId: string;
-  startDate: string; // ISO yyyy-mm-dd
+  startDate: string;
   endDate: string;
   message?: string;
 }
 
-// Rejections the UI must show (HTML 42/43/44): dates unavailable, borrowing
-// limit reached, your own listing. Throw an Error whose message is user-ready.
-export async function createBorrowRequest(input: BorrowRequestInput): Promise<Order> {
+export async function createBorrowRequest(
+  input: BorrowRequestInput
+): Promise<Order> {
+  // Validate listing ID before making an API request.
+  const listingId = Number(input.listingId);
+
+  if (!Number.isInteger(listingId) || listingId <= 0) {
+    throw new Error('Invalid listing ID. Please try again.');
+  }
+
+  // Validate date inputs.
+  if (!input.startDate || !input.endDate) {
+    throw new Error('Please select your borrowing dates.');
+  }
+
+  if (input.startDate > input.endDate) {
+    throw new Error('The return date cannot be earlier than the start date.');
+  }
+
+  // Mock behavior.
   if (USE_MOCK) {
     const order: Order = {
-      id: `o${mockOrders.length + 1}`, orderNumber: `BRB-${String(200 + mockOrders.length)}`, role: 'Borrower',
-      listingTitle: 'Requested listing', status: 'Requested', startDate: input.startDate, endDate: input.endDate,
-      counterpart: 'Lender', pickupLocation: 'PUP Main Gate',
+      id: `o${mockOrders.length + 1}`,
+      orderNumber: `BRB-${String(200 + mockOrders.length)}`,
+      role: 'Borrower',
+      listingTitle: 'Requested listing',
+      status: 'Requested',
+      startDate: input.startDate,
+      endDate: input.endDate,
+      counterpart: 'Lender',
+      pickupLocation: 'PUP Main Gate',
     };
+
     mockOrders = [...mockOrders, order];
     return order;
   }
+
   const payload = {
-    listing_id: Number(input.listingId),
+    listing_id: listingId,
     start_date: input.startDate,
     end_date: input.endDate,
+    ...(input.message?.trim()
+      ? { message: input.message.trim() }
+      : {}),
   };
+
   try {
     const { data } = await http.post<any>('/orders/', payload);
+
     return normalizeOrder(data, 'Borrower');
   } catch (error: any) {
-    const message = extractApiError(error);
-    throw new Error(message);
+    const response = error?.response?.data ?? {};
+
+    const code = String(
+      response.code ??
+      response.error_code ??
+      response.error ??
+      ''
+    ).toLowerCase();
+
+    const rawMessage =
+      response.detail ??
+      response.message ??
+      response.error_description ??
+      (typeof response.error === 'string' ? response.error : undefined) ??
+      extractApiError(error);
+
+    const message = String(rawMessage).toLowerCase();
+
+    // Borrowing limit reached.
+    if (
+      code.includes('borrowing_limit') ||
+      message.includes('borrowing limit') ||
+      message.includes('maximum number of active')
+    ) {
+      throw new Error(
+        'BORROWING_LIMIT: You have reached your maximum borrowing limit. Please complete or return an active order before requesting another item.'
+      );
+    }
+
+    // Selected dates are unavailable.
+    if (
+      code.includes('date_conflict') ||
+      message.includes('date overlap') ||
+      message.includes('already reserved') ||
+      message.includes('unavailable dates')
+    ) {
+      throw new Error(
+        'DATE_CONFLICT: Your selected dates overlap with an existing reservation. Please select another date range.'
+      );
+    }
+
+    // Borrower is attempting to borrow their own listing.
+    if (
+      code.includes('own_listing') ||
+      message.includes('own listing') ||
+      message.includes('your own item')
+    ) {
+      throw new Error(
+        'OWN_LISTING: You cannot borrow your own listing.'
+      );
+    }
+
+    throw new Error(
+      typeof rawMessage === 'string'
+        ? rawMessage
+        : 'Unable to submit your request. Please try again.'
+    );
   }
 }
-
 /* =========================================================
    CP-502  Accept or decline a borrow request  (owner: Member B)
 ========================================================= */
@@ -231,10 +315,13 @@ export interface OrderCode { code: string; expiresAt: string } // ISO timestamp
 export type OrderCodeErrorKind = 'incorrect' | 'expired' | 'used' | 'locked';
 export class OrderCodeError extends Error {
   kind: OrderCodeErrorKind;
-  constructor(kind: OrderCodeErrorKind) {
+  lockedUntil?: string;
+
+  constructor(kind: OrderCodeErrorKind, lockedUntil?: string) {
     super(`Code ${kind}.`);
     this.name = 'OrderCodeError';
     this.kind = kind;
+    this.lockedUntil = lockedUntil;
     Object.setPrototypeOf(this, OrderCodeError.prototype);
   }
 }
@@ -242,16 +329,56 @@ export class OrderCodeError extends Error {
 const MOCK_CODE = '630528';
 const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
 
+// Keeps the issued code and its original expiration timestamp while the app
+// process is running, including when the screen is unmounted and reopened.
+const handoverCodeCache = new Map<string, OrderCode>();
+
+function isValidOrderCode(value: OrderCode | undefined): value is OrderCode {
+  if (!value?.code || !value.expiresAt) return false;
+  const expiry = new Date(value.expiresAt).getTime();
+  return Number.isFinite(expiry) && expiry > Date.now();
+}
+
+export function clearHandoverCodeCache(orderId: string): void {
+  handoverCodeCache.delete(orderId);
+}
+
+// Returns the existing unexpired code when available. It only generates a
+// new code if none is cached or the previous code has expired.
+export async function getOrGenerateHandoverCode(orderId: string): Promise<OrderCode> {
+  const cached = handoverCodeCache.get(orderId);
+  if (isValidOrderCode(cached)) return cached;
+
+  return generateHandoverCode(orderId);
+}
+
 export async function generateHandoverCode(orderId: string): Promise<OrderCode> {
-  if (USE_MOCK) return { code: MOCK_CODE, expiresAt: new Date(Date.now() + THREE_HOURS_MS).toISOString() };
   try {
-    const { data } = await http.post<any>(`/orders/${orderId}/handover-code/generate/`);
-    return {
-      code: data.code_value || data.code,
-      expiresAt: data.expires_at || data.expiresAt || new Date(Date.now() + THREE_HOURS_MS).toISOString(),
-    };
+    let result: OrderCode;
+
+    if (USE_MOCK) {
+      result = {
+        code: MOCK_CODE,
+        expiresAt: new Date(Date.now() + THREE_HOURS_MS).toISOString(),
+      };
+    } else {
+      const { data } = await http.post<any>(`/orders/${orderId}/handover-code/generate/`);
+      const code = data?.code_value || data?.code;
+      const expiresAt = data?.expires_at || data?.expiresAt;
+
+      if (!code || !expiresAt || !Number.isFinite(new Date(expiresAt).getTime())) {
+        throw new Error(
+          'The handover API did not return a valid code expiration timestamp.'
+        );
+      }
+
+      result = { code: String(code), expiresAt: String(expiresAt) };
+    }
+
+    handoverCodeCache.set(orderId, result);
+    return result;
   } catch (error: any) {
-    const message = extractApiError(error);
+    const message = error instanceof Error ? error.message : extractApiError(error);
     throw new Error(message);
   }
 }
@@ -260,10 +387,12 @@ export async function generateHandoverCode(orderId: string): Promise<OrderCode> 
 export async function confirmHandover(orderId: string, code: string): Promise<Order> {
   if (USE_MOCK) {
     if (code !== MOCK_CODE) throw new OrderCodeError('incorrect');
+    clearHandoverCodeCache(orderId);
     return mockSetStatus(orderId, 'Active');
   }
   try {
     const { data } = await http.post<any>(`/orders/${orderId}/handover-code/verify/`, { code });
+    clearHandoverCodeCache(orderId);
     return normalizeOrder(data, 'Borrower');
   } catch (error: any) {
     const codeErr = getApiErrorCode(error);
@@ -279,7 +408,19 @@ export async function confirmHandover(orderId: string, code: string): Promise<Or
       throw new OrderCodeError('used');
     }
     if (error?.response?.status === 429 || lower.includes('locked')) {
-      throw new OrderCodeError('locked');
+      const responseData = error?.response?.data || {};
+      const lockedUntil =
+        responseData.locked_until ||
+        responseData.lockedUntil ||
+        responseData.lockout_expires_at ||
+        responseData.lockoutExpiresAt ||
+        responseData.data?.locked_until ||
+        responseData.data?.lockedUntil;
+
+      throw new OrderCodeError(
+        'locked',
+        typeof lockedUntil === 'string' ? lockedUntil : undefined
+      );
     }
     const message = extractApiError(error);
     throw new Error(message);

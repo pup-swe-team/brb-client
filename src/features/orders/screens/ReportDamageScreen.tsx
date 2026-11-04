@@ -2,12 +2,15 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  Image,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 
 import {
   Button,
@@ -17,13 +20,52 @@ import {
 } from '../../../shared/components';
 import { colors, spacing, text, radius } from '../../../theme';
 
+type EvidenceFile = ImagePicker.ImagePickerAsset;
+
 export default function ReportDamageScreen({ navigation, route }: any) {
   const { orderId } = route.params as { orderId: string };
 
   const [description, setDescription] = useState('');
-  const [photoSelected, setPhotoSelected] = useState(false);
-  const [videoSelected, setVideoSelected] = useState(false);
+  const [photo, setPhoto] = useState<EvidenceFile | null>(null);
+  const [video, setVideo] = useState<EvidenceFile | null>(null);
   const [error, setError] = useState('');
+
+  const selectEvidence = async (type: 'photo' | 'video') => {
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert(
+          'Permission required',
+          'Please allow gallery access to attach evidence.',
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: type === 'photo' ? ['images'] : ['videos'],
+        allowsEditing: type === 'photo',
+        quality: 0.8,
+        videoMaxDuration: 60,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      if (type === 'photo') {
+        setPhoto(result.assets[0]);
+      } else {
+        setVideo(result.assets[0]);
+      }
+
+      setError('');
+    } catch {
+      Alert.alert(
+        'Selection failed',
+        'Unable to open your gallery. Please try again.',
+      );
+    }
+  };
 
   const handleSubmit = () => {
     if (!description.trim()) {
@@ -31,15 +73,20 @@ export default function ReportDamageScreen({ navigation, route }: any) {
       return;
     }
 
-    if (!photoSelected || !videoSelected) {
-      setError('Please attach at least one photo and one video.');
+    if (!photo) {
+      setError('Please attach at least one photo.');
       return;
     }
 
+    if (!video) {
+      setError('Please attach at least one video.');
+      return;
+    }
+
+    // TODO: Connect to the backend damage-report endpoint.
     Alert.alert(
-      'Report submitted',
-      `Your damage report for order ${orderId} has been submitted.`,
-      [{ text: 'Done', onPress: () => navigation.popToTop() }],
+      'Submission not connected',
+      'Your evidence is selected, but the damage-report API still needs to be connected.',
     );
   };
 
@@ -52,14 +99,18 @@ export default function ReportDamageScreen({ navigation, route }: any) {
           <View style={styles.content}>
             <Text style={text.caption}>Order #{orderId}</Text>
 
-            <Text style={styles.heading}>Report damage or missing items</Text>
+            <Text style={styles.heading}>
+              Report damage or missing items
+            </Text>
+
             <Text style={styles.subtitle}>
-              Describe the item&apos;s condition after it was returned. Please
-              provide photo and video evidence to support your report.
+              Describe the item's condition after it was returned. Provide
+              photo and video evidence to support your report.
             </Text>
 
             <Card style={styles.card}>
               <Text style={styles.label}>What happened?</Text>
+
               <TextInput
                 value={description}
                 onChangeText={(value) => {
@@ -73,8 +124,9 @@ export default function ReportDamageScreen({ navigation, route }: any) {
                 style={styles.input}
                 accessibilityLabel="Damage description"
               />
+
               <Text style={styles.helper}>
-                Include details about the item&apos;s condition and any missing parts.
+                Include details about the item's condition and missing parts.
               </Text>
             </Card>
 
@@ -85,59 +137,84 @@ export default function ReportDamageScreen({ navigation, route }: any) {
               </Text>
 
               <Button
-                title={photoSelected ? 'Photo selected ✓' : 'Select Photo'}
+                title={photo ? 'Replace Photo' : 'Select Photo'}
                 variant="secondary"
-                onPress={() => {
-                  setPhotoSelected(true);
-                  setError('');
-                  Alert.alert(
-                    'Demo selection',
-                    'This is a UI placeholder. Actual photo picking is not connected yet.',
-                  );
-                }}
+                onPress={() => selectEvidence('photo')}
               />
 
-              <View style={styles.evidenceStatus}>
-                <Ionicons
-                  name={photoSelected ? 'checkmark-circle' : 'image-outline'}
-                  size={20}
-                  color={photoSelected ? colors.success : colors.textMuted}
-                />
-                <Text style={styles.helper}>
-                  {photoSelected ? 'Photo marked as selected' : 'No photo attached'}
-                </Text>
-              </View>
+              {photo ? (
+                <View style={styles.previewContainer}>
+                  <Image
+                    source={{ uri: photo.uri }}
+                    style={styles.photoPreview}
+                  />
+
+                  <View style={styles.fileInfo}>
+                    <Text style={styles.fileName} numberOfLines={1}>
+                      {photo.fileName || 'Selected photo'}
+                    </Text>
+                    <Text style={styles.helper}>Photo attached</Text>
+                  </View>
+
+                  <Pressable
+                    onPress={() => setPhoto(null)}
+                    accessibilityLabel="Remove photo"
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={21}
+                      color={colors.error}
+                    />
+                  </Pressable>
+                </View>
+              ) : (
+                <Text style={styles.helper}>No photo attached</Text>
+              )}
             </Card>
 
             <Card style={styles.card}>
               <Text style={styles.label}>Video evidence *</Text>
               <Text style={styles.helper}>
-                At least one video is required.
+                At least one video is required. Maximum duration: 60 seconds.
               </Text>
 
               <Button
-                title={videoSelected ? 'Video selected ✓' : 'Select Video'}
+                title={video ? 'Replace Video' : 'Select Video'}
                 variant="secondary"
-                onPress={() => {
-                  setVideoSelected(true);
-                  setError('');
-                  Alert.alert(
-                    'Demo selection',
-                    'This is a UI placeholder. Actual video picking is not connected yet.',
-                  );
-                }}
+                onPress={() => selectEvidence('video')}
               />
 
-              <View style={styles.evidenceStatus}>
-                <Ionicons
-                  name={videoSelected ? 'checkmark-circle' : 'videocam-outline'}
-                  size={20}
-                  color={videoSelected ? colors.success : colors.textMuted}
-                />
-                <Text style={styles.helper}>
-                  {videoSelected ? 'Video marked as selected' : 'No video attached'}
-                </Text>
-              </View>
+              {video ? (
+                <View style={styles.previewContainer}>
+                  <View style={styles.videoPreview}>
+                    <Ionicons
+                      name="videocam"
+                      size={28}
+                      color={colors.primary}
+                    />
+                  </View>
+
+                  <View style={styles.fileInfo}>
+                    <Text style={styles.fileName} numberOfLines={1}>
+                      {video.fileName || 'Selected video'}
+                    </Text>
+                    <Text style={styles.helper}>Video attached</Text>
+                  </View>
+
+                  <Pressable
+                    onPress={() => setVideo(null)}
+                    accessibilityLabel="Remove video"
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={21}
+                      color={colors.error}
+                    />
+                  </Pressable>
+                </View>
+              ) : (
+                <Text style={styles.helper}>No video attached</Text>
+              )}
             </Card>
 
             <View style={styles.notice}>
@@ -212,10 +289,36 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 11,
   },
-  evidenceStatus: {
+  previewContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    marginTop: 8,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: colors.bg,
+  },
+  photoPreview: {
+    width: 58,
+    height: 58,
+    borderRadius: 7,
+  },
+  videoPreview: {
+    width: 58,
+    height: 58,
+    borderRadius: 7,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fileInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  fileName: {
+    ...text.body,
+    fontSize: 12,
+    fontWeight: '600',
   },
   notice: {
     flexDirection: 'row',

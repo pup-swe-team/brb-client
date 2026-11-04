@@ -25,17 +25,20 @@ import { PublicLenderProfile, getLenderProfile } from '../../profile/services/le
 import { AvailabilityCalendar } from '../components/AvailabilityCalendar';
 import { createBorrowRequest } from '../../orders/services/ordersService';
 import { http } from '../../../services/http';
-
+type ReservedDateRange = {
+  startDate: string;
+  endDate: string;
+};
 type CalendarPickerProps = {
   visible: boolean;
   selectedDate: string;
   minDate?: string;
   availableFrom?: string;
   availableTo?: string;
+  reservedRanges?: ReservedDateRange[];
   onClose: () => void;
   onSelect: (date: string) => void;
 };
-
 function formatDisplayDate(iso: string): string {
   if (!iso) return '';
   const [y, m, d] = iso.split('-').map(Number);
@@ -45,14 +48,11 @@ function formatDisplayDate(iso: string): string {
     year: 'numeric',
   });
 }
-
 export default function ItemDetailScreen({ navigation, route }: any) {
   const item = route?.params?.item ?? {};
   const insets = useSafeAreaInsets();
-
   const itemId = item?.id || route?.params?.id;
   const [detailData, setDetailData] = useState<any>(null);
-
   useEffect(() => {
     if (!itemId) return;
     let active = true;
@@ -67,21 +67,18 @@ export default function ItemDetailScreen({ navigation, route }: any) {
       active = false;
     };
   }, [itemId]);
-
   const title = detailData?.title || item.title || 'Untitled listing';
   const author = detailData?.lender?.full_name || item.author || '';
   const price = detailData?.rate_per_day
     ? (Number(detailData.rate_per_day) > 0 ? `₱${detailData.rate_per_day} / day` : 'FREE')
     : (item.price || 'FREE');
   const isFree = String(price).trim().toUpperCase() === 'FREE';
-
   const mediaBase = (process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1').replace(/\/api\/v1\/?$/, '');
   const detailPhotos: string[] = (detailData?.photos || []).map((p: any) => {
     const raw = p.file_reference || p.photo || p.url;
     if (!raw) return '';
     return raw.startsWith('http') ? raw : `${mediaBase}${raw.startsWith('/') ? '' : '/'}${raw}`;
   }).filter(Boolean);
-
   const photos: string[] = detailPhotos.length
     ? detailPhotos
     : (item.photos?.length
@@ -92,16 +89,23 @@ export default function ItemDetailScreen({ navigation, route }: any) {
         ]);
   const { width: screenWidth } = useWindowDimensions();
   const [photoIndex, setPhotoIndex] = useState(0);
-
   // Availability window of this listing (YYYY-MM-DD). Missing = no restriction.
   const availableFrom: string | undefined = detailData?.availability_windows?.[0]?.start_date || item.availableFrom;
   const availableTo: string | undefined = detailData?.availability_windows?.[0]?.end_date || item.availableTo;
+  // Expected API field: reserved_date_ranges: [{ start_date, end_date }].
+  // active_orders is a count, so it cannot identify reserved dates.
+  const reservedRanges: ReservedDateRange[] = (
+    detailData?.reserved_date_ranges ?? item.reservedRanges ?? []
+  )
+    .map((range: any) => ({
+      startDate: String(range?.start_date ?? range?.startDate ?? ''),
+      endDate: String(range?.end_date ?? range?.endDate ?? ''),
+    }))
+    .filter((range: ReservedDateRange) => range.startDate && range.endDate);
   const lenderId: string | undefined = (detailData?.lender?.id != null ? String(detailData.lender.id) : undefined) || item.lenderId;
   const displayDescription = detailData?.description || item.description;
-
   // Identity status decides whether the person may send a request.
   const { status: verificationStatus, loading: statusLoading } = useVerificationStatus();
-
   // Lender summary + reviews come from the lender's public profile.
   const [lender, setLender] = useState<PublicLenderProfile | null>(null);
   useEffect(() => {
@@ -116,13 +120,11 @@ export default function ItemDetailScreen({ navigation, route }: any) {
       active = false;
     };
   }, [lenderId]);
-
   const reviews = (lender?.reviews ?? []).filter((r) => r.itemTitle === title);
   const reviewTotal = reviews.length;
   const countFor = (stars: number) => reviews.filter((r) => r.rating === stars).length;
   const barWidth = (stars: number): `${number}%` =>
     `${reviewTotal ? Math.round((countFor(stars) / reviewTotal) * 100) : 0}%`;
-
   const [checkout, setCheckout] = useState('');
   const [returnDate, setReturnDate] = useState('');
   const [calendarTarget, setCalendarTarget] = useState<'checkout' | 'return'>(
@@ -135,13 +137,20 @@ export default function ItemDetailScreen({ navigation, route }: any) {
   const [paymentMethod, setPaymentMethod] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [bookmarked, setBookmarked] = useState(false);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorModalTitle, setErrorModalTitle] = useState('Request failed');
+  const [errorModalMessage, setErrorModalMessage] = useState('');
 
+  const showRequestError = (title: string, message: string) => {
+    setErrorModalTitle(title);
+    setErrorModalMessage(message);
+    setErrorModalVisible(true);
+  };
+  const [bookmarked, setBookmarked] = useState(false);
   const openCalendar = (target: 'checkout' | 'return') => {
     setCalendarTarget(target);
     setCalendarVisible(true);
   };
-
   const selectDate = (date: string) => {
     if (calendarTarget === 'checkout') {
       setCheckout(date);
@@ -153,7 +162,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
     }
     setCalendarVisible(false);
   };
-
   const openRequest = () => {
     if (statusLoading) return;
     // Only verified users can send a request.
@@ -167,30 +175,35 @@ export default function ItemDetailScreen({ navigation, route }: any) {
     }
     setRequestVisible(true);
   };
-
   const verifyCopy =
     verificationStatus === 'Pending'
       ? { title: 'Verification in review', message: 'Your ID is still being reviewed. You can request items once you are verified.', action: '' }
       : verificationStatus === 'Rejected'
         ? { title: 'Verification not approved', message: 'Your ID was not approved. Upload a new ID to request items.', action: 'Upload New ID' }
         : { title: 'Verify your identity first', message: 'You need a verified account to request items. It only takes a few minutes.', action: 'Verify Now' };
-
   const confirmRequest = async () => {
     if (!checkout || !returnDate) {
       Alert.alert('Choose your dates', 'Please select a start date and return date.');
       return;
     }
-
     if (returnDate < checkout) {
-      Alert.alert('Invalid dates', 'The return date must be on or after the start date.');
+      showRequestError('Invalid dates', 'The return date must be on or after the start date.');
       return;
     }
-
+    const hasDateConflict = reservedRanges.some(
+      (range) => checkout <= range.endDate && returnDate >= range.startDate
+    );
+    if (hasDateConflict) {
+      showRequestError(
+        'Dates unavailable',
+        'Your selected dates overlap with an existing reservation. Please choose another date range.'
+      );
+      return;
+    }
     if (!isFree && !paymentMethod.trim()) {
       Alert.alert('Required field', 'Please enter a payment method.');
       return;
     }
-
     const listingId = item.id ?? item.listingId;
     if (listingId === undefined || listingId === null || String(listingId).trim() === '') {
       Alert.alert(
@@ -199,47 +212,71 @@ export default function ItemDetailScreen({ navigation, route }: any) {
       );
       return;
     }
-
     try {
       setSubmitting(true);
       const requestMessage = [
         message.trim(),
         !isFree ? `Payment method: ${paymentMethod.trim()}` : '',
       ].filter(Boolean).join('\n');
-
       await createBorrowRequest({
         listingId: String(listingId),
         startDate: checkout,
         endDate: returnDate,
         message: requestMessage || undefined,
       });
-
       setConfirmVisible(false);
       setRequestVisible(false);
       setMessage('');
       setPaymentMethod('');
-
       Alert.alert(
         'Request sent',
         `Your ${isFree ? 'borrow' : 'rental'} request has been submitted.`,
         [{ text: 'OK', onPress: () => navigation.goBack() }],
       );
     } catch (error) {
-      Alert.alert(
-        'Request failed',
-        error instanceof Error ? error.message : 'Please try again.',
-      );
+      const errorMessage =
+        error instanceof Error ? error.message : 'Please try again.';
+      const normalizedMessage = errorMessage.toLowerCase();
+
+      if (
+        normalizedMessage.includes('borrowing_limit') ||
+        normalizedMessage.includes('borrowing limit') ||
+        normalizedMessage.includes('maximum number of active')
+      ) {
+        showRequestError(
+          'Borrowing limit reached',
+          'You have reached the maximum number of active borrow requests. Please complete or return an active order before requesting another item.',
+        );
+      } else if (
+        normalizedMessage.includes('date_conflict') ||
+        normalizedMessage.includes('date overlap') ||
+        normalizedMessage.includes('already reserved') ||
+        normalizedMessage.includes('unavailable dates')
+      ) {
+        showRequestError(
+          'Dates unavailable',
+          'Your selected dates overlap with an existing reservation. Please choose another date range.',
+        );
+      } else if (
+        normalizedMessage.includes('own_listing') ||
+        normalizedMessage.includes('own listing') ||
+        normalizedMessage.includes('your own item')
+      ) {
+        showRequestError(
+          'Cannot borrow your own listing',
+          'You cannot send a borrow request for an item that you listed yourself.',
+        );
+      } else {
+        showRequestError('Request failed', errorMessage);
+      }
     } finally {
       setSubmitting(false);
     }
   };
-
   return (
     <View style={styles.screen}>
       <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
-
       <View style={styles.header} />
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -265,7 +302,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               />
             ))}
           </ScrollView>
-
           <Pressable
             style={styles.backButton}
             onPress={() => navigation.goBack()}
@@ -277,29 +313,24 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               color={colors.primaryDark}
             />
           </Pressable>
-
           <View style={styles.imageCount}>
             <Text style={styles.imageCountText}>
               {photoIndex + 1}/{photos.length}
             </Text>
           </View>
-
           <View style={styles.priceBadge}>
             <Text style={styles.priceText}>{price}</Text>
           </View>
-
           <View style={styles.availableBadge}>
             <View style={styles.availableDot} />
             <Text style={styles.availableText}>Available</Text>
           </View>
         </View>
-
         <View style={styles.titleSection}>
           <View style={styles.titleRow}>
             <Text style={styles.itemTitle} numberOfLines={2}>
               {title}
             </Text>
-
             <Pressable
               style={styles.bookmarkButton}
               onPress={() => setBookmarked((previous) => !previous)}
@@ -314,20 +345,16 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               />
             </Pressable>
           </View>
-
           {author ? <Text style={styles.authorText}>{author}</Text> : null}
         </View>
-
         <View style={styles.contentSection}>
           <View style={styles.programBadge}>
             <Text style={styles.programText}>
               {item.category || 'General'}
             </Text>
           </View>
-
           <View style={styles.dateCard}>
             <Text style={styles.dateTitle}>{isFree ? "When do you need to borrow it?" : "When do you need it?"}</Text>
-
             <View style={styles.dateRow}>
               <Pressable
                 style={styles.dateBox}
@@ -336,7 +363,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
                 <Text style={styles.dateLabel}>{isFree ? "Borrow" : "Check-out"}</Text>
                 <Text style={styles.addDate}>{checkout ? formatDisplayDate(checkout) : 'Add date'}</Text>
               </Pressable>
-
               <Pressable
                 style={styles.dateBox}
                 onPress={() => openCalendar('return')}
@@ -346,17 +372,16 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               </Pressable>
             </View>
           </View>
-
           <View style={styles.aboutSection}>
             <Text style={styles.sectionTitle}>Availability</Text>
             <AvailabilityCalendar
               availableFrom={availableFrom}
               availableTo={availableTo}
+              reservedRanges={reservedRanges}
               start={checkout}
               end={returnDate}
             />
           </View>
-
           <View style={styles.aboutSection}>
             <Text style={styles.sectionTitle}>About this Product</Text>
             {(item.details ||
@@ -367,7 +392,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               </Text>
             ))}
           </View>
-
           <Pressable
             style={styles.lenderCard}
             disabled={!lenderId}
@@ -389,7 +413,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
                 />
               )}
             </View>
-
             <View style={styles.lenderInfo}>
               <VerifiedLabel
                 name={lender?.fullName || item.lenderName || 'Lender'}
@@ -420,13 +443,10 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               />
             ) : null}
           </Pressable>
-
           <View style={styles.divider} />
-
           <Text style={styles.sectionTitle}>
             Product Reviews <Text style={styles.reviewCount}>({reviewTotal})</Text>
           </Text>
-
           {reviewTotal === 0 ? (
             <Text style={styles.detailText}>No reviews for this item yet.</Text>
           ) : (
@@ -436,11 +456,8 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               <RatingRow label="Three" count={countFor(3)} width={barWidth(3)} />
               <RatingRow label="Two" count={countFor(2)} width={barWidth(2)} />
               <RatingRow label="One" count={countFor(1)} width={barWidth(1)} />
-
               <View style={styles.divider} />
-
               <Text style={styles.sectionTitle}>Recent Feedbacks</Text>
-
               {reviews.map((r) => (
                 <FeedbackCard
                   key={r.id}
@@ -451,11 +468,9 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               ))}
             </>
           )}
-
           <View style={styles.bottomSpace} />
         </View>
       </ScrollView>
-
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 6 }]}>
         <Pressable
           style={styles.chatButton}
@@ -470,7 +485,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
           />
           <Text style={styles.chatText}>Chat</Text>
         </Pressable>
-
         <Pressable
           style={styles.requestRentButton}
           onPress={openRequest}
@@ -480,7 +494,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
           </Text>
         </Pressable>
       </View>
-
       <Modal
         visible={verifyPromptVisible}
         transparent
@@ -501,10 +514,8 @@ export default function ItemDetailScreen({ navigation, route }: any) {
                 color={colors.primary}
               />
             </View>
-
             <Text style={styles.confirmTitle}>{verifyCopy.title}</Text>
             <Text style={styles.confirmMessage}>{verifyCopy.message}</Text>
-
             <View style={styles.confirmActions}>
               <Pressable
                 style={styles.confirmCancel}
@@ -514,7 +525,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
                   {verifyCopy.action ? 'Not Now' : 'OK'}
                 </Text>
               </Pressable>
-
               {verifyCopy.action ? (
                 <Pressable
                   style={styles.confirmButton}
@@ -532,7 +542,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
           </View>
         </View>
       </Modal>
-
       {calendarVisible ? (
         <CalendarPicker
           visible
@@ -540,11 +549,11 @@ export default function ItemDetailScreen({ navigation, route }: any) {
           minDate={calendarTarget === 'return' ? checkout || undefined : undefined}
           availableFrom={availableFrom}
           availableTo={availableTo}
+          reservedRanges={reservedRanges}
           onClose={() => setCalendarVisible(false)}
           onSelect={selectDate}
         />
       ) : null}
-
       <Modal
         visible={requestVisible}
         transparent
@@ -578,9 +587,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               <Text style={styles.modalTitle}>
                 {isFree ? 'Request to Borrow' : 'Request to Rent'}
               </Text>
-
             </View>
-
             <View style={styles.requestItem}>
               <View style={styles.requestItemIcon}>
                 <Ionicons
@@ -601,7 +608,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
                 </Text>
               </View>
             </View>
-
             {!isFree && (
               <>
                 <Text style={styles.inputLabel}>Payment Method</Text>
@@ -615,7 +621,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
                 />
               </>
             )}
-
             <Text style={styles.inputLabel}>Add a message (Optional)</Text>
             <TextInput
               style={styles.messageInput}
@@ -628,7 +633,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               maxLength={500}
               accessibilityLabel="Optional message to lender"
             />
-
             <View style={styles.modalActions}>
               <Pressable
                 style={styles.cancelButton}
@@ -649,6 +653,39 @@ export default function ItemDetailScreen({ navigation, route }: any) {
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+      <Modal
+        visible={errorModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setErrorModalVisible(false)}
+      >
+        <View style={styles.confirmBackdrop}>
+          <BlurView
+            intensity={32}
+            tint="dark"
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.confirmModal}>
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={38}
+                color={colors.primary}
+              />
+            </View>
+            <Text style={styles.confirmTitle}>{errorModalTitle}</Text>
+            <Text style={styles.confirmMessage}>{errorModalMessage}</Text>
+            <View style={styles.confirmActions}>
+              <Pressable
+                style={styles.confirmButton}
+                onPress={() => setErrorModalVisible(false)}
+              >
+                <Text style={styles.confirmButtonText}>OK</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       <Modal
@@ -675,7 +712,6 @@ export default function ItemDetailScreen({ navigation, route }: any) {
             <Text style={styles.confirmMessage}>
               Are you sure you want to make this request?
             </Text>
-
             <View style={styles.confirmActions}>
               <Pressable
                 style={styles.confirmCancel}
@@ -702,13 +738,13 @@ export default function ItemDetailScreen({ navigation, route }: any) {
     </View>
   );
 }
-
 function CalendarPicker({
   visible,
   selectedDate,
   minDate,
   availableFrom,
   availableTo,
+  reservedRanges = [],
   onClose,
   onSelect,
 }: CalendarPickerProps) {
@@ -726,33 +762,30 @@ function CalendarPicker({
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [draftDate, setDraftDate] = useState(selectedDate);
-
   const year = month.getFullYear();
   const monthIndex = month.getMonth();
   const firstDay = new Date(year, monthIndex, 1).getDay();
   const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
-
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-
   const formatDate = (day: number) =>
     `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
   const isDisabled = (date: string) => {
     const parsed = new Date(`${date}T00:00:00`);
     return (
       parsed < today ||
       (!!minDate && date < minDate) ||
       (!!availableFrom && date < availableFrom) ||
-      (!!availableTo && date > availableTo)
+      (!!availableTo && date > availableTo) ||
+      reservedRanges.some(
+        (range) => date >= range.startDate && date <= range.endDate,
+      )
     );
   };
-
   const days = Array.from(
     { length: firstDay + daysInMonth },
     (_, index) => (index < firstDay ? null : index - firstDay + 1),
   );
-
   return (
     <Modal
       visible={visible}
@@ -778,7 +811,6 @@ function CalendarPicker({
           />
          <View style={styles.calendarHeader}>
   <Text style={styles.modalTitle}>Select Dates</Text>
-
   <Pressable
     style={styles.calendarCloseButton}
     onPress={onClose}
@@ -791,11 +823,9 @@ function CalendarPicker({
     />
   </Pressable>
 </View>
-
           <Text style={styles.calendarPreview}>
             {draftDate ? formatDisplayDate(draftDate) : 'Choose a date'}
           </Text>
-
           <View style={styles.monthHeader}>
             <Pressable
               onPress={() => setMonth(new Date(year, monthIndex - 1, 1))}
@@ -824,14 +854,12 @@ function CalendarPicker({
               />
             </Pressable>
           </View>
-
           <View style={styles.calendarGrid}>
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
               <Text key={day} style={styles.weekday}>
                 {day}
               </Text>
             ))}
-
             {days.map((day, index) => {
               if (day === null) {
                 return (
@@ -841,11 +869,9 @@ function CalendarPicker({
                   />
                 );
               }
-
               const date = formatDate(day);
               const disabled = isDisabled(date);
               const selected = draftDate === date;
-
               return (
                 <Pressable
                   key={date}
@@ -870,7 +896,6 @@ function CalendarPicker({
               );
             })}
           </View>
-
           <Pressable
             style={[
               styles.calendarContinue,
@@ -887,7 +912,6 @@ function CalendarPicker({
     </Modal>
   );
 }
-
 function RatingRow({
   label,
   count,
@@ -908,7 +932,6 @@ function RatingRow({
     </View>
   );
 }
-
 function FeedbackCard({
   name,
   rating,
@@ -925,7 +948,6 @@ function FeedbackCard({
       <View style={styles.feedbackAvatar}>
         <Ionicons name="person" size={24} color={colors.textMuted} />
       </View>
-
       <View style={styles.feedbackContent}>
         <View style={styles.feedbackHeader}>
           <View style={styles.feedbackNameContainer}>
@@ -950,7 +972,6 @@ function FeedbackCard({
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -971,7 +992,6 @@ const styles = StyleSheet.create({
     height: 58,
     backgroundColor: colors.primary,
   },
-
   imageSection: {
     width: '100%',
     height: 300,
@@ -1352,7 +1372,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
   },
-
   /* Calendar modal */
   calendarBackdrop: {
     flex: 1,
@@ -1476,7 +1495,6 @@ calendarCloseButton: {
     fontSize: 13,
     fontWeight: '700',
   },
-
   /* Request modal */
   modalBackdrop: {
     flex: 1,
@@ -1607,7 +1625,6 @@ calendarCloseButton: {
     fontSize: 12,
     fontWeight: '700',
   },
-
   /* Confirmation modal */
   confirmBackdrop: {
     flex: 1,
