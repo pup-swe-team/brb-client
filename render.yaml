@@ -4,7 +4,9 @@ services:
     runtime: static
     buildCommand: npm install && npx expo export --platform web
     staticPublishPath: dist
-    envVars:
+   envVars:
+      - key: NODE_VERSION
+        value: "20.18.0"
       - key: EXPO_PUBLIC_API_URL
         value: https://brb-server.onrender.com/api/v1
       - key: EXPO_PUBLIC_USE_MOCK
