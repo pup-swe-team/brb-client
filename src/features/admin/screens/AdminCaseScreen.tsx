@@ -8,7 +8,7 @@ import { colors, radius, spacing } from '../../../theme';
 import { Button, ScreenContainer } from '../../../shared/components';
 import { extractApiError, getApiErrorCode } from '../../../services/http';
 import {
-  AdminCaseDossier, RESOLUTION_LABELS, Resolution, escalateCase, getAdminCase, resolveCase,
+  AdminCaseDossier, RESOLUTION_LABELS, Resolution, escalateCase, getAdminCase, mediaUrl, resolveCase,
 } from '../services/adminCaseService';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -49,9 +49,9 @@ function Row({ label, value }: { label: string; value: string }) {
 
 type Mode = 'resolve' | 'escalate' | null;
 
-// Route param: { caseId: string }. Falls back to 'c1' for testing.
+// Route param: { caseId: string }. Falls back to 1 for testing.
 export function AdminCaseScreen({ navigation, route }: any) {
-  const caseId: string = route?.params?.caseId ?? 'c1';
+  const caseId: string = String(route?.params?.caseId ?? '1');
   const goBack = () => navigation?.goBack?.();
 
   const [data, setData] = useState<AdminCaseDossier | null>(null);
@@ -137,13 +137,15 @@ export function AdminCaseScreen({ navigation, route }: any) {
         {/* SUMMARY */}
         <View style={s.card}>
           <Text style={s.itemTitle}>{listing.title}</Text>
-          <Text style={s.orderId}>Order {String(order.id).toUpperCase()}</Text>
+          <Text style={s.orderId}>{c.case_id} · Order #{order.id}</Text>
           <View style={s.divider} />
           <Row label="Case status" value={c.status.charAt(0).toUpperCase() + c.status.slice(1)} />
           <Row label="Borrower" value={borrower.full_name} />
           <Row label="Lender" value={lender.full_name} />
           <Row label="Rental dates" value={`${fmtDate(order.start_date)} – ${fmtDate(order.end_date)}`} />
           <Row label="Reported" value={fmtDate(c.created_at)} />
+          <Row label="Pickup" value={order.pickup_location} />
+          <Row label="Rate" value={`₱${listing.price_per_day}/day`} />
         </View>
 
         {/* DAMAGE REPORT */}
@@ -162,12 +164,12 @@ export function AdminCaseScreen({ navigation, route }: any) {
           ) : (
             <View style={s.evidenceGrid}>
               {c.evidence.map((ev) =>
-                ev.type === 'photo' ? (
-                  <Pressable key={ev.id} onPress={() => Linking.openURL(ev.url)} accessibilityLabel="Open photo">
-                    <Image source={{ uri: ev.url }} style={s.thumb} />
+                ev.media_type === 'photo' ? (
+                  <Pressable key={ev.id} onPress={() => Linking.openURL(mediaUrl(ev.file))} accessibilityLabel="Open photo">
+                    <Image source={{ uri: mediaUrl(ev.file) }} style={s.thumb} />
                   </Pressable>
                 ) : (
-                  <Pressable key={ev.id} onPress={() => Linking.openURL(ev.url)} style={[s.thumb, s.videoThumb]} accessibilityLabel="Play video">
+                  <Pressable key={ev.id} onPress={() => Linking.openURL(mediaUrl(ev.file))} style={[s.thumb, s.videoThumb]} accessibilityLabel="Play video">
                     <Ionicons name="play-circle" size={32} color={colors.white} />
                     <Text style={s.videoText}>Video</Text>
                   </Pressable>
@@ -185,7 +187,7 @@ export function AdminCaseScreen({ navigation, route }: any) {
               <Ionicons name="checkmark-circle" size={18} color={colors.success} />
               <View style={{ flex: 1 }}>
                 <Text style={s.resolvedText}>
-                  Resolved{c.resolution ? `: ${RESOLUTION_LABELS[c.resolution]}` : ''}
+                  Resolved{c.resolution ? `: ${(RESOLUTION_LABELS[c.resolution] ?? c.resolution)}` : ''}
                 </Text>
                 {c.notes ? <Text style={s.resolvedText}>{c.notes}</Text> : null}
               </View>
