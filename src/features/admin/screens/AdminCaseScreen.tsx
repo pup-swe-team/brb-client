@@ -1,41 +1,25 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors, radius, spacing } from '../../../theme';
 import { Button, ScreenContainer } from '../../../shared/components';
-import { ConfirmModal } from '../../../shared/components/ConfirmModal';
-import { OverdueIndicator } from '../../dashboard/components/OverdueIndicator';
-import { AdminCase, AdminCaseAction, applyAdminCaseAction, getAdminCase } from '../services/adminCaseService';
+import { extractApiError, getApiErrorCode } from '../../../services/http';
+import {
+  AdminCaseDossier, RESOLUTION_LABELS, Resolution, escalateCase, getAdminCase, mediaUrl, resolveCase,
+} from '../services/adminCaseService';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function fmtDate(d: string) {
-  const [y, m, day] = d.split('-');
+  const [y, m, day] = d.slice(0, 10).split('-');
   return `${MONTHS[Number(m) - 1]} ${Number(day)}, ${y}`;
 }
-function peso(n: number) {
-  return `₱${n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
-}
 
-const ACTIONS: Record<AdminCaseAction, { label: string; title: string; message: string; confirm: string }> = {
-  sendReminder: {
-    label: 'Send reminder',
-    title: 'Send a reminder?',
-    message: 'The borrower will be notified to return the item.',
-    confirm: 'Send reminder',
-  },
-  escalate: {
-    label: 'Escalate case',
-    title: 'Escalate this case?',
-    message: 'The case is flagged for follow-up. Use this when reminders are not working.',
-    confirm: 'Escalate',
-  },
-  markReturned: {
-    label: 'Mark as returned',
-    title: 'Mark as returned?',
-    message: 'This closes the case. Only do this if the item is back with the lender.',
-    confirm: 'Mark returned',
-  },
+// TODO: verify error codes from the backend guide and add friendly messages here.
+const ERROR_MESSAGES: Record<string, string> = {
+  // case_already_resolved: 'This case was already resolved.',
 };
 
 function Shell({ onBack, children }: { onBack: () => void; children: React.ReactNode }) {
@@ -63,64 +47,61 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Route param: { caseId: string }. Falls back to 'c1' so the screen also opens without params while testing.
+type Mode = 'resolve' | 'escalate' | null;
+
+// Route param: { caseId: string }. Falls back to 1 for testing.
 export function AdminCaseScreen({ navigation, route }: any) {
-  const caseId: string = route?.params?.caseId ?? 'c1';
+  const caseId: string = String(route?.params?.caseId ?? '1');
   const goBack = () => navigation?.goBack?.();
 
-  const [data, setData] = useState<AdminCase | null>(null);
+  const [data, setData] = useState<AdminCaseDossier | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState<AdminCaseAction | null>(null);
+  const [mode, setMode] = useState<Mode>(null);
+  const [resolution, setResolution] = useState<Resolution | null>(null);
+  const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    getAdminCase(caseId)
-      .then((res) => {
-        if (active) {
-          setData(res);
-          setError(null);
-        }
-      })
-      .catch(() => {
-        if (active) setError('Could not load this case.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [caseId]);
-
-  const reload = () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    getAdminCase(caseId)
-      .then((res) => {
-        setData(res);
-        setError(null);
-      })
-      .catch(() => {
-        setError('Could not load this case.');
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    try {
+      setData(await getAdminCase(caseId));
+    } catch (e) {
+      setError(extractApiError(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [caseId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const openMode = (m: Mode) => {
+    setMode(m);
+    setNotes('');
+    setResolution(null);
+    setActionError(null);
   };
 
-  const confirmAction = async () => {
-    if (!pending || !data) return;
-    const action = pending;
-    setPending(null);
+  const canSubmit = mode === 'resolve' ? !!resolution && notes.trim().length > 0 : notes.trim().length > 0;
+
+  const submit = async () => {
+    if (!data || !mode || !canSubmit) return;
     setBusy(true);
     setActionError(null);
     try {
-      setData(await applyAdminCaseAction(data.id, action));
-    } catch {
-      setActionError('Could not update the case. Try again.');
+      const next =
+        mode === 'resolve'
+          ? await resolveCase(data.case.id, { resolution: resolution!, notes: notes.trim() })
+          : await escalateCase(data.case.id, { notes: notes.trim() });
+      setData(next);
+      setMode(null);
+    } catch (e) {
+      const code = getApiErrorCode(e);
+      setActionError((code && ERROR_MESSAGES[code]) || extractApiError(e));
     } finally {
       setBusy(false);
     }
@@ -141,85 +122,127 @@ export function AdminCaseScreen({ navigation, route }: any) {
       <Shell onBack={goBack}>
         <View style={s.errorWrap}>
           <Text style={s.errorText}>{error ?? 'Case not found.'}</Text>
-          <Button title="Try again" variant="secondary" onPress={reload} />
+          <Button title="Try again" variant="secondary" onPress={load} />
         </View>
       </Shell>
     );
   }
 
-  const resolved = data.resolution === 'Resolved';
-  const detail = `${data.daysLate} ${data.daysLate === 1 ? 'day' : 'days'} ${data.status === 'Overdue' ? 'overdue' : 'unreturned'}`;
-  const dialog = pending ? ACTIONS[pending] : null;
+  const { case: c, order, listing, borrower, lender } = data;
+  const closed = c.status === 'resolved';
 
   return (
     <Shell onBack={goBack}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         {/* SUMMARY */}
         <View style={s.card}>
-          <Text style={s.itemTitle}>{data.itemTitle}</Text>
-          <Text style={s.orderId}>Order {data.orderId.toUpperCase()}</Text>
-          {!resolved ? <OverdueIndicator status={data.status} detail={detail} /> : null}
+          <Text style={s.itemTitle}>{listing.title}</Text>
+          <Text style={s.orderId}>{c.case_id} · Order #{order.id}</Text>
           <View style={s.divider} />
-          <Row label="Case status" value={data.resolution} />
-          <Row label="Borrower" value={data.borrowerName} />
-          <Row label="Lender" value={data.lenderName} />
-          <Row label="Due date" value={fmtDate(data.dueDate)} />
-          <Row label="Deposit" value={peso(data.depositPhp)} />
+          <Row label="Case status" value={c.status.charAt(0).toUpperCase() + c.status.slice(1)} />
+          <Row label="Borrower" value={borrower.full_name} />
+          <Row label="Lender" value={lender.full_name} />
+          <Row label="Rental dates" value={`${fmtDate(order.start_date)} – ${fmtDate(order.end_date)}`} />
+          <Row label="Reported" value={fmtDate(c.created_at)} />
+          <Row label="Pickup" value={order.pickup_location} />
+          <Row label="Rate" value={`₱${listing.price_per_day}/day`} />
         </View>
 
-        {/* TIMELINE */}
+        {/* DAMAGE REPORT */}
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Timeline</Text>
+          <Text style={s.sectionTitle}>Damage report</Text>
           <View style={s.card}>
-            {data.events.map((e, i) => (
-              <View key={e.id} style={s.event}>
-                <View style={s.dotCol}>
-                  <View style={s.dot} />
-                  {i < data.events.length - 1 ? <View style={s.line} /> : null}
-                </View>
-                <View style={{ flex: 1, paddingBottom: spacing.md }}>
-                  <Text style={s.eventLabel}>{e.label}</Text>
-                  <Text style={s.eventDate}>{fmtDate(e.date)}</Text>
-                </View>
-              </View>
-            ))}
+            <Text style={s.body}>{c.description}</Text>
           </View>
+        </View>
+
+        {/* EVIDENCE */}
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>Evidence ({c.evidence.length})</Text>
+          {c.evidence.length === 0 ? (
+            <Text style={s.muted}>No evidence attached.</Text>
+          ) : (
+            <View style={s.evidenceGrid}>
+              {c.evidence.map((ev) =>
+                ev.media_type === 'photo' ? (
+                  <Pressable key={ev.id} onPress={() => Linking.openURL(mediaUrl(ev.file))} accessibilityLabel="Open photo">
+                    <Image source={{ uri: mediaUrl(ev.file) }} style={s.thumb} />
+                  </Pressable>
+                ) : (
+                  <Pressable key={ev.id} onPress={() => Linking.openURL(mediaUrl(ev.file))} style={[s.thumb, s.videoThumb]} accessibilityLabel="Play video">
+                    <Ionicons name="play-circle" size={32} color={colors.white} />
+                    <Text style={s.videoText}>Video</Text>
+                  </Pressable>
+                ),
+              )}
+            </View>
+          )}
         </View>
 
         {/* ACTIONS */}
         <View style={s.section}>
           <Text style={s.sectionTitle}>Actions</Text>
-          {resolved ? (
+          {closed ? (
             <View style={s.resolvedBox}>
               <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-              <Text style={s.resolvedText}>This case is resolved. No further action needed.</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={s.resolvedText}>
+                  Resolved{c.resolution ? `: ${(RESOLUTION_LABELS[c.resolution] ?? c.resolution)}` : ''}
+                </Text>
+                {c.notes ? <Text style={s.resolvedText}>{c.notes}</Text> : null}
+              </View>
+            </View>
+          ) : mode === null ? (
+            <View style={{ gap: spacing.sm }}>
+              <Button title="Resolve" onPress={() => openMode('resolve')} />
+              {c.status !== 'escalated' ? (
+                <Button title="Escalate" variant="destructive" onPress={() => openMode('escalate')} />
+              ) : null}
             </View>
           ) : (
-            <View style={{ gap: spacing.sm }}>
-              <Button title={ACTIONS.sendReminder.label} onPress={() => setPending('sendReminder')} disabled={busy} />
-              <Button title={ACTIONS.markReturned.label} variant="secondary" onPress={() => setPending('markReturned')} disabled={busy} />
-              <Button title={ACTIONS.escalate.label} variant="destructive" onPress={() => setPending('escalate')} disabled={busy} />
+            <View style={s.card}>
+              <Text style={s.itemTitle}>{mode === 'resolve' ? 'Resolve case' : 'Escalate case'}</Text>
+              {mode === 'resolve' ? (
+                <View style={{ gap: spacing.xs }}>
+                  {(Object.keys(RESOLUTION_LABELS) as Resolution[]).map((r) => (
+                    <Pressable key={r} onPress={() => setResolution(r)} style={s.option} accessibilityRole="radio">
+                      <Ionicons
+                        name={resolution === r ? 'radio-button-on' : 'radio-button-off'}
+                        size={18}
+                        color={colors.primary}
+                      />
+                      <Text style={s.body}>{RESOLUTION_LABELS[r]}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              <TextInput
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Notes"
+                multiline
+                style={s.input}
+                placeholderTextColor={colors.textSecondary}
+              />
+              {actionError ? <Text style={s.errorText}>{actionError}</Text> : null}
+              <Button
+                title={busy ? 'Saving…' : mode === 'resolve' ? 'Confirm resolution' : 'Confirm escalation'}
+                variant={mode === 'escalate' ? 'destructive' : 'primary'}
+                onPress={submit}
+                disabled={busy || !canSubmit}
+              />
+              <Button title="Cancel" variant="secondary" onPress={() => setMode(null)} disabled={busy} />
             </View>
           )}
-          {actionError ? <Text style={s.errorText}>{actionError}</Text> : null}
         </View>
       </ScrollView>
-
-      <ConfirmModal
-        visible={pending !== null}
-        title={dialog?.title ?? ''}
-        message={dialog?.message ?? ''}
-        confirmLabel={dialog?.confirm}
-        destructive={pending === 'escalate'}
-        onConfirm={confirmAction}
-        onCancel={() => setPending(null)}
-      />
     </Shell>
   );
 }
 
+export default AdminCaseScreen;
+
 const s = StyleSheet.create({
-  // Same full-bleed trick as ProfileScreen so the header spans the screen.
   screen: {
     flex: 1,
     width: '110%',
@@ -259,20 +282,32 @@ const s = StyleSheet.create({
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
   infoLabel: { color: colors.textSecondary, fontSize: 10 },
   infoValue: { color: colors.text, fontSize: 10, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
+  body: { color: colors.text, fontSize: 10 },
+  muted: { color: colors.textSecondary, fontSize: 10 },
 
   section: { gap: spacing.sm },
   sectionTitle: { color: colors.text, fontSize: 12, fontWeight: '700' },
 
-  event: { flexDirection: 'row', gap: spacing.sm },
-  dotCol: { alignItems: 'center', width: 12 },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary, marginTop: 3 },
-  line: { flex: 1, width: 2, backgroundColor: colors.border, marginTop: 2 },
-  eventLabel: { color: colors.text, fontSize: 10, fontWeight: '600' },
-  eventDate: { color: colors.textSecondary, fontSize: 8, marginTop: 2 },
+  evidenceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  thumb: { width: 100, height: 100, borderRadius: radius.card, backgroundColor: colors.border },
+  videoThumb: { backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  videoText: { color: colors.white, fontSize: 9 },
+
+  option: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 4 },
+  input: {
+    minHeight: 80,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.card,
+    padding: spacing.sm,
+    fontSize: 11,
+    color: colors.text,
+    textAlignVertical: 'top',
+  },
 
   resolvedBox: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
     backgroundColor: colors.goldSoft,
     borderWidth: 1,
@@ -280,5 +315,5 @@ const s = StyleSheet.create({
     borderRadius: radius.card,
     padding: spacing.md,
   },
-  resolvedText: { flex: 1, color: colors.textSecondary, fontSize: 10 },
+  resolvedText: { color: colors.textSecondary, fontSize: 10 },
 });

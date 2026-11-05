@@ -1,112 +1,108 @@
-import { extractApiError, http, USE_MOCK } from '../../../services/http';
-import { MOCK_ADMIN_CASES } from './mockAdminCases';
-import { AdminCase, AdminCaseAction, CaseEvent, CaseResolution } from './adminCaseTypes';
+import { http, USE_MOCK } from '../../../services/http';
 
-export * from './adminCaseTypes';
+// ---------- Types (from the backend guide, section 3.2) ----------
+export interface Evidence {
+  id: number;
+  file: string; // relative path, e.g. "/media/disputes/12/photo1.jpg"
+  media_type: 'photo' | 'video';
+  created_at: string;
+}
+// Guide only shows "submitted". TODO: verify the status values after resolve/escalate.
+export type CaseStatus = 'submitted' | 'resolved' | 'escalated' | string;
+// Guide only shows "refund_approved". TODO: ask backend for the full list of allowed values.
+export type Resolution = 'refund_approved' | 'refund_denied' | string;
 
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-// In-memory copy so actions in mock mode persist while the app is open.
-const store: Record<string, AdminCase> = JSON.parse(JSON.stringify(MOCK_ADMIN_CASES));
-
-const todayIso = () => new Date().toISOString().slice(0, 10);
-
-const NEXT: Record<AdminCaseAction, { resolution: CaseResolution; event: string }> = {
-  sendReminder: { resolution: 'Reminder sent', event: 'Reminder sent to borrower' },
-  escalate: { resolution: 'Escalated', event: 'Case escalated for follow-up' },
-  markReturned: { resolution: 'Resolved', event: 'Marked returned by admin' },
-};
-
-export async function getAdminCase(caseId: string): Promise<AdminCase> {
-  if (USE_MOCK) {
-    await delay(400);
-    const c = store[caseId] || store['c1'];
-    if (!c) throw new Error('Case not found');
-    return { ...c, events: [...c.events] };
-  }
-  try {
-    const { data } = await http.get<any>(`/unreturned-cases/${caseId}/`);
-    const c = data.case || data;
-    const order = data.order || {};
-    const listing = data.listing || {};
-    const borrower = data.borrower || {};
-    const lender = data.lender || {};
-
-    let daysLate = 0;
-    if (order.end_date) {
-      const diffMs = Date.now() - new Date(order.end_date).getTime();
-      daysLate = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
-    }
-
-    const events: CaseEvent[] = [];
-    if (c.created_at) {
-      events.push({ id: 'e1', label: 'Case opened by system', date: c.created_at.slice(0, 10) });
-    }
-    if (c.escalated_at) {
-      events.push({ id: 'e2', label: 'Escalated to OSS / Campus Security', date: c.escalated_at.slice(0, 10) });
-    }
-    if (c.resolution_notes) {
-      events.push({ id: 'e3', label: `Resolution: ${c.resolution_notes}`, date: (c.updated_at || c.created_at || '').slice(0, 10) });
-    }
-
-    let resolution: CaseResolution = 'Open';
-    const caseStatus = (c.status?.name || c.status || '').toLowerCase();
-    if (caseStatus === 'escalated') resolution = 'Escalated';
-    else if (caseStatus === 'returned' || caseStatus === 'unresolved') resolution = 'Resolved';
-
-    return {
-      id: String(c.id),
-      orderId: String(order.id || c.order_id || ''),
-      itemTitle: listing.title || 'Item',
-      borrowerName: borrower.full_name || 'Borrower',
-      lenderName: lender.full_name || 'Lender',
-      status: order.status === 'overdue' ? 'Overdue' : 'Unreturned',
-      resolution,
-      dueDate: order.end_date || '',
-      daysLate,
-      depositPhp: 0,
-      events: events.length > 0 ? events : [{ id: 'e1', label: 'Case opened', date: todayIso() }],
-    };
-  } catch (err: any) {
-    if (store[caseId]) {
-      return { ...store[caseId], events: [...store[caseId].events] };
-    }
-    const message = extractApiError(err);
-    throw new Error(message);
-  }
+export interface Party {
+  id: number;
+  full_name: string;
+  email: string;
+}
+export interface AdminCaseDossier {
+  case: {
+    id: number;
+    case_id: string; // "DISP-1"
+    order_id: number;
+    type: string;
+    status: CaseStatus;
+    description: string;
+    evidence: Evidence[];
+    created_at: string;
+    resolution?: Resolution | null; // TODO: verify if the dossier returns these after resolving
+    notes?: string | null;
+  };
+  order: { id: number; status: string; start_date: string; end_date: string; pickup_location: string };
+  listing: { id: number; title: string; price_per_day: string };
+  borrower: Party;
+  lender: Party;
 }
 
-export async function applyAdminCaseAction(caseId: string, action: AdminCaseAction): Promise<AdminCase> {
+export const RESOLUTION_LABELS: Record<string, string> = {
+  refund_approved: 'Refund approved',
+  refund_denied: 'Refund denied', // TODO: verify this value exists on the backend
+};
+
+// Evidence `file` is a relative path, so prefix the server origin (API URL minus /api/v1).
+export function mediaUrl(path: string): string {
+  if (/^https?:\/\//.test(path)) return path;
+  const base = String(http.defaults.baseURL ?? '').replace(/\/api\/v1\/?$/, '').replace(/\/$/, '');
+  return `${base}${path}`;
+}
+
+// ---------- Mock (same shape as the real dossier) ----------
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const mock: AdminCaseDossier = {
+  case: {
+    id: 1,
+    case_id: 'DISP-1',
+    order_id: 12,
+    type: 'damage_report',
+    status: 'submitted',
+    description: 'Torn fabric on left sleeve and stain on collar.',
+    evidence: [
+      { id: 1, file: 'https://picsum.photos/400/300', media_type: 'photo', created_at: '2026-11-04T05:35:00Z' },
+      { id: 2, file: 'https://example.com/video1.mp4', media_type: 'video', created_at: '2026-11-04T05:35:00Z' },
+    ],
+    created_at: '2026-11-04T05:35:00Z',
+  },
+  order: { id: 12, status: 'disputed', start_date: '2026-11-01', end_date: '2026-11-03', pickup_location: 'Main Campus - CEA' },
+  listing: { id: 10, title: 'Snow White Cosplay', price_per_day: '250.00' },
+  borrower: { id: 3, full_name: 'Juan Dela Cruz', email: 'jdelacruz@iskolarngbayan.pup.edu.ph' },
+  lender: { id: 7, full_name: 'Maria Santos', email: 'msantos@iskolarngbayan.pup.edu.ph' },
+};
+const clone = () => JSON.parse(JSON.stringify(mock)) as AdminCaseDossier;
+
+// ---------- API (paths assume EXPO_PUBLIC_API_URL ends with /api/v1) ----------
+export async function getAdminCase(caseId: string | number): Promise<AdminCaseDossier> {
   if (USE_MOCK) {
     await delay(400);
-    const c = store[caseId] || store['c1'];
-    if (!c) throw new Error('Case not found');
-    const next = NEXT[action];
-    c.resolution = next.resolution;
-    c.events = [...c.events, { id: `e${Date.now()}`, label: next.event, date: todayIso() }];
-    return { ...c, events: [...c.events] };
+    return clone();
   }
-  try {
-    if (action === 'escalate') {
-      await http.post(`/unreturned-cases/${caseId}/escalate/`, {
-        resolution_notes: 'Escalated for administrative follow-up',
-      });
-    } else if (action === 'markReturned') {
-      await http.post(`/unreturned-cases/${caseId}/close/`, {
-        status: 'returned',
-        resolution_notes: 'Marked returned by admin',
-      });
-    }
-    return await getAdminCase(caseId);
-  } catch (err: any) {
-    if (store[caseId]) {
-      const c = store[caseId];
-      const next = NEXT[action];
-      c.resolution = next.resolution;
-      c.events = [...c.events, { id: `e${Date.now()}`, label: next.event, date: todayIso() }];
-      return { ...c, events: [...c.events] };
-    }
-    const message = extractApiError(err);
-    throw new Error(message);
+  const res = await http.get<AdminCaseDossier>(`/disputes/${caseId}/`);
+  return res.data;
+}
+
+export async function resolveCase(
+  caseId: string | number,
+  body: { resolution: Resolution; notes: string },
+): Promise<AdminCaseDossier> {
+  if (USE_MOCK) {
+    await delay(400);
+    mock.case.status = 'resolved';
+    mock.case.resolution = body.resolution;
+    mock.case.notes = body.notes;
+    return clone();
   }
+  await http.post(`/disputes/${caseId}/resolve/`, body);
+  return getAdminCase(caseId); // re-fetch so the screen always shows the dossier shape
+}
+
+export async function escalateCase(caseId: string | number, body: { notes: string }): Promise<AdminCaseDossier> {
+  if (USE_MOCK) {
+    await delay(400);
+    mock.case.status = 'escalated';
+    mock.case.notes = body.notes;
+    return clone();
+  }
+  await http.post(`/disputes/${caseId}/escalate/`, body);
+  return getAdminCase(caseId);
 }
