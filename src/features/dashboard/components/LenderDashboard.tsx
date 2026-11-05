@@ -19,6 +19,7 @@ import { IncomingRequestsSection } from './IncomingRequestsSection';
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function fmtRange(start: string, end: string) {
+  if (!start || !end) return '—';
   const [, sm, sd] = start.split('-');
   const [ey, em, ed] = end.split('-');
   return `${MONTHS[Number(sm) - 1]} ${Number(sd)} – ${MONTHS[Number(em) - 1]} ${Number(ed)}, ${ey}`;

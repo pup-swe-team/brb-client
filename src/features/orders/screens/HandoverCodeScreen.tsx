@@ -24,19 +24,9 @@ import {
   getOrder,
   OrderCodeError,
 } from '../services/ordersService';
+import { formatLockoutTime, useCodeLockout } from '../hooks/useCodeLockout';
 
 type Mode = 'show' | 'enter';
-
-// Keeps lockout attempts while navigating away from and back to this screen.
-// Backend persistence is still required to survive a full app restart.
-const HANDOVER_LOCKOUTS = new Map<
-  string,
-  { attempts: number; lockedUntil: number | null }
->();
-
-// Fallback duration only if the backend reports a lockout without an expiry.
-// Keep this aligned with the backend's configured lockout duration.
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
 
 export default function HandoverCodeScreen({ navigation, route }: any) {
   const { orderId, mode } = route.params as { orderId: string; mode: Mode };
@@ -51,10 +41,10 @@ export default function HandoverCodeScreen({ navigation, route }: any) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [attempts, setAttempts] = useState(0);
-  const [locked, setLocked] = useState(false);
-  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
-  const [lockRemaining, setLockRemaining] = useState(0);
+  // Lockout comes from the server (GET /codes/verify-handover/?order_id=) so it survives
+  // leaving the screen, refreshing and restarting the app.
+  const lockout = useCodeLockout('handover', orderId);
+  const { locked, remaining: lockRemaining, refresh: refreshLockout } = lockout;
   const [completed, setCompleted] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,28 +65,10 @@ export default function HandoverCodeScreen({ navigation, route }: any) {
     setLoading(true);
     setError('');
 
-    // Restore the current order's lockout state when the screen regains focus.
+    // Re-read the server lockout state whenever the screen mounts or regains focus.
     if (mode === 'enter') {
-      const saved = HANDOVER_LOCKOUTS.get(orderId);
-
-      if (saved) {
-        const stillLocked =
-          saved.lockedUntil !== null && saved.lockedUntil > Date.now();
-
-        setAttempts(saved.attempts);
-        setLocked(stillLocked);
-        setLockedUntil(stillLocked ? saved.lockedUntil : null);
-        setEnteredCode('');
-
-        if (saved.lockedUntil !== null && !stillLocked) {
-          HANDOVER_LOCKOUTS.delete(orderId);
-          setAttempts(0);
-        }
-      } else {
-        setAttempts(0);
-        setLocked(false);
-        setLockedUntil(null);
-      }
+      setEnteredCode('');
+      await refreshLockout();
     }
 
     try {
@@ -115,7 +87,7 @@ export default function HandoverCodeScreen({ navigation, route }: any) {
     } finally {
       setLoading(false);
     }
-  }, [orderId, orderRole, mode]);
+  }, [orderId, orderRole, mode, refreshLockout]);
 
   useFocusEffect(
     useCallback(() => {
@@ -137,66 +109,11 @@ export default function HandoverCodeScreen({ navigation, route }: any) {
     return () => clearInterval(timer);
   }, [expiresAt]);
 
-  useEffect(() => {
-    if (mode !== 'enter' || lockedUntil === null) {
-      setLockRemaining(0);
-      return;
-    }
-
-    const updateLockCountdown = () => {
-      const seconds = Math.max(
-        0,
-        Math.ceil((lockedUntil - Date.now()) / 1000)
-      );
-      setLockRemaining(seconds);
-
-      if (seconds === 0) {
-        setLocked(false);
-        setLockedUntil(null);
-        setAttempts(0);
-        setEnteredCode('');
-        HANDOVER_LOCKOUTS.delete(orderId);
-      }
-    };
-
-    updateLockCountdown();
-    const timer = setInterval(updateLockCountdown, 1000);
-    return () => clearInterval(timer);
-  }, [lockedUntil, mode, orderId]);
-
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
-
-  const formatLockoutTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
-
-  const activateLockout = (backendLockedUntil?: string) => {
-    const parsedExpiry = backendLockedUntil
-      ? new Date(backendLockedUntil).getTime()
-      : NaN;
-
-    const expiry =
-      Number.isFinite(parsedExpiry) && parsedExpiry > Date.now()
-        ? parsedExpiry
-        : Date.now() + LOCKOUT_DURATION_MS;
-
-    HANDOVER_LOCKOUTS.set(orderId, {
-      attempts: 5,
-      lockedUntil: expiry,
-    });
-
-    setAttempts(5);
-    setLocked(true);
-    setLockedUntil(expiry);
-    setEnteredCode('');
-    setError('');
   };
 
   const requestNewCode = async () => {
@@ -234,23 +151,20 @@ export default function HandoverCodeScreen({ navigation, route }: any) {
       if (err instanceof OrderCodeError && err.kind === 'expired') {
         setError('This code has expired. Ask the lender for a new code.');
       } else if (err instanceof OrderCodeError && err.kind === 'locked') {
-        activateLockout(err.lockedUntil);
+        lockout.applyError(err);
+        setEnteredCode('');
+        setError('');
       } else if (err instanceof OrderCodeError && err.kind === 'used') {
         setError('This code has already been used. Request a new code.');
       } else if (err instanceof OrderCodeError && err.kind === 'incorrect') {
-        const nextAttempts = attempts + 1;
-        setAttempts(nextAttempts);
-
-        if (nextAttempts >= 5) {
-          activateLockout();
+        const left = lockout.registerIncorrect(err);
+        if (left <= 0) {
+          // The server locks on the 5th miss; read the exact lockout window from it.
+          await lockout.refresh();
+          setEnteredCode('');
+          setError('');
         } else {
-          HANDOVER_LOCKOUTS.set(orderId, {
-            attempts: nextAttempts,
-            lockedUntil: null,
-          });
-          setError(
-            `Incorrect code. ${5 - nextAttempts} attempt(s) remaining.`
-          );
+          setError(`Incorrect code. ${left} attempt(s) remaining.`);
         }
       } else {
         setError(err instanceof Error ? err.message : 'Unable to confirm the handover. Please try again.');
@@ -307,7 +221,7 @@ export default function HandoverCodeScreen({ navigation, route }: any) {
                 <View style={styles.lockedCard}>
                   <Text style={styles.lockedTitle}>Code Entry Locked</Text>
                   <Text style={styles.lockedMessage}>
-                    Too many incorrect attempts. Code entry is temporarily unavailable.
+                    Too many failed attempts. Please try again in {formatLockoutTime(lockRemaining)}.
                   </Text>
                   <Text style={styles.lockedTimer}>
                     {formatLockoutTime(lockRemaining)}

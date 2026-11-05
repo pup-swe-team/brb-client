@@ -1,5 +1,7 @@
-import { extractApiError, getApiErrorCode, http, USE_MOCK } from '../../../services/http';
-import { Order, OrderRole, OrderStatus } from '../../../shared/types';
+import { isAxiosError } from 'axios';
+import { Platform } from 'react-native';
+import { extractApiError, http, USE_MOCK } from '../../../services/http';
+import { Order, OrderLockout, OrderRole, OrderStatus } from '../../../shared/types';
 
 // PATTERN FOR ALL FEATURES: one function per endpoint; mock first, real call behind the same signature.
 
@@ -34,11 +36,55 @@ function mockSetStatus(id: string, status: Order['status']): Order {
   return next;
 }
 
-function toTitleCase(s: string): OrderStatus {
-  if (!s) return 'Requested';
-  const lower = s.toLowerCase();
-  const capitalized = lower.charAt(0).toUpperCase() + lower.slice(1);
-  return capitalized as OrderStatus;
+// Backend status strings -> UI labels (see BACKEND_API_COORDINATION_GUIDE, section 2.1).
+// handover_pending is still "Confirmed" for the UI (the handover action is shown);
+// return_pending is still "Active" (the return action is shown).
+const STATUS_MAP: Record<string, OrderStatus> = {
+  requested: 'Requested',
+  pending: 'Requested',
+  confirmed: 'Confirmed',
+  handover_pending: 'Confirmed',
+  in_possession: 'Active',
+  active: 'Active',
+  return_pending: 'Active',
+  overdue: 'Overdue',
+  unreturned: 'Unreturned',
+  returned: 'Returned',
+  completed: 'Completed',
+  disputed: 'Disputed',
+  declined: 'Declined',
+  rejected: 'Declined',
+  expired: 'Expired',
+  cancelled: 'Cancelled',
+  canceled: 'Cancelled',
+};
+
+export function mapBackendStatus(raw: unknown): OrderStatus {
+  const value = typeof raw === 'string' ? raw : (raw as any)?.name;
+  if (!value || typeof value !== 'string') return 'Requested';
+  const key = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return STATUS_MAP[key] ?? 'Requested';
+}
+
+// Server message for axios failures, own message for local errors (e.g. a malformed code payload).
+function errorMessage(error: unknown): string {
+  if (isAxiosError(error)) return extractApiError(error);
+  return error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+}
+
+// Lockout fields shared by GET /orders/{id}/ and GET /codes/verify-*/?order_id=.
+export function parseLockout(raw: any): OrderLockout | undefined {
+  if (!raw || (raw.is_locked_out === undefined && raw.remaining_lockout_seconds === undefined && raw.locked_until === undefined)) {
+    return undefined;
+  }
+  const remaining = Number(raw.remaining_lockout_seconds ?? raw.remaining_seconds ?? 0);
+  const remainingLockoutSeconds = Number.isFinite(remaining) ? Math.max(0, Math.floor(remaining)) : 0;
+  return {
+    isLockedOut: Boolean(raw.is_locked_out) || remainingLockoutSeconds > 0,
+    lockedUntil: typeof raw.locked_until === 'string' ? raw.locked_until : undefined,
+    remainingLockoutSeconds,
+    failedAttempts: Number(raw.failed_attempts ?? 0) || 0,
+  };
 }
 
 export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
@@ -53,33 +99,35 @@ export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
       ? String(raw.listing.id)
       : undefined;
   const listingTitle = raw.listingTitle || raw.listing_title || raw.listing?.title || 'Listing';
-  const status = toTitleCase(raw.status?.name || raw.status || 'Requested');
+  const status = mapBackendStatus(raw.status);
   const startDate = raw.startDate || raw.start_date || '';
   const endDate = raw.endDate || raw.end_date || '';
 
+  // The backend exposes borrower/lender explicitly (FE-BUG-3002). Never infer one from the other.
   const borrowerName =
-    raw.borrower?.full_name || raw.borrower_name || raw.borrower_full_name || '';
+    raw.borrower_name || raw.borrower?.full_name || raw.borrower_full_name || '';
   const lenderName =
-    raw.listing?.lender?.full_name ||
-    raw.lender?.full_name ||
     raw.lender_name ||
+    raw.lender?.full_name ||
+    raw.listing?.lender?.full_name ||
     raw.lender_full_name ||
     '';
-  let counterpart = raw.counterpart || '';
-  if (!counterpart) {
-    if (defaultRole === 'Borrower') {
-      counterpart = lenderName || 'Lender';
-    } else if (defaultRole === 'Lender') {
-      counterpart = borrowerName || 'Borrower';
-    } else {
-      counterpart = lenderName || borrowerName || 'Counterpart';
-    }
+
+  // With a known viewer role, always derive the counterpart from the explicit names.
+  // `raw.counterpart` is only a fallback because it is relative to whoever made the request.
+  let counterpart = '';
+  if (defaultRole === 'Borrower') {
+    counterpart = lenderName || raw.counterpart || 'Lender';
+  } else if (defaultRole === 'Lender') {
+    counterpart = borrowerName || raw.counterpart || 'Borrower';
+  } else {
+    counterpart = raw.counterpart || lenderName || borrowerName || 'Counterpart';
   }
 
   const role: OrderRole = defaultRole || (raw.role as OrderRole) || 'Borrower';
   const orderNumber = raw.orderNumber || (id ? `BRB-${String(id).padStart(4, '0')}` : undefined);
-  const pickupLocation = raw.pickupLocation || raw.pickup_location || raw.listing?.pickup_location?.name || '';
-  const rawPrice = raw.pricePerDay ?? raw.price_per_day ?? raw.rate_per_day ?? raw.listing?.rate_per_day;
+  const pickupLocation = raw.pickupLocation || raw.pickup_location?.name || raw.pickup_location || raw.listing?.pickup_location?.name || '';
+  const rawPrice = raw.pricePerDay ?? raw.price_per_day ?? raw.rate_per_day ?? raw.listing?.rate_per_day ?? raw.listing?.price_per_day;
   const pricePerDay = rawPrice != null ? Number(rawPrice) : undefined;
 
   return {
@@ -92,16 +140,48 @@ export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
     counterpart,
     role,
     orderNumber,
-    pickupLocation,
+    pickupLocation: typeof pickupLocation === 'string' ? pickupLocation : '',
     pricePerDay,
+    borrowerName: borrowerName || undefined,
+    lenderName: lenderName || undefined,
+    lockout: parseLockout(raw),
   };
+}
+
+// Dashboard payloads group orders in several arrays (active_borrows, pending_requests, ...).
+// Collect every order-like object (has an id and a status) and de-duplicate by id.
+function collectDashboardOrders(data: any, role: OrderRole): Order[] {
+  const byId = new Map<string, Order>();
+  const walk = (node: any, depth: number) => {
+    if (!node || depth > 3) return;
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        if (item && typeof item === 'object' && item.id != null && item.status != null) {
+          const order = normalizeOrder(item, role);
+          byId.set(order.id, order);
+        }
+      }
+    } else if (typeof node === 'object') {
+      for (const value of Object.values(node)) walk(value, depth + 1);
+    }
+  };
+  walk(data, 0);
+  return Array.from(byId.values());
+}
+
+async function getDashboardOrders(role: OrderRole): Promise<Order[]> {
+  const path = role === 'Borrower' ? '/users/me/borrower-dashboard/' : '/users/me/lender-dashboard/';
+  const { data } = await http.get<any>(path);
+  return collectDashboardOrders(data, role);
 }
 
 /* =========================================================
    SHARED READS (owner: Danielo, CP-201). Do not change signatures.
+   The backend now moves orders to Overdue / Expired whenever these endpoints are read
+   (FE-BUG-3007), so the UI only reads `status`; no client-side timestamp checks.
 ========================================================= */
 
-// Max number of Active + Overdue orders a borrower may hold at once (HTML 20, 43).
+// Max number of active or pending borrow requests a borrower may hold at once.
 export const BORROWING_LIMIT = 3;
 
 // All of the signed-in user's orders; pass a role to get only one side.
@@ -114,31 +194,10 @@ export async function getMyOrders(role?: OrderRole): Promise<Order[]> {
       return list.map((item) => normalizeOrder(item, role));
     }
   } catch {
-    // Fallback to dashboard aggregation endpoints if /orders/ list is not available
-    if (role === 'Borrower') {
-      const { data } = await http.get<any>('/dashboard/borrower/');
-      const all: Order[] = [];
-      const ordersObj = data?.orders || {};
-      for (const key of Object.keys(ordersObj)) {
-        if (key !== 'past' && Array.isArray(ordersObj[key])) {
-          for (const item of ordersObj[key]) {
-            all.push(normalizeOrder(item, 'Borrower'));
-          }
-        }
-      }
-      return all;
-    } else if (role === 'Lender') {
-      const { data } = await http.get<any>('/dashboard/lender/');
-      const all: Order[] = [];
-      for (const section of ['incoming_requests', 'ongoing_lends', 'past_orders']) {
-        if (Array.isArray(data?.[section])) {
-          for (const item of data[section]) {
-            all.push(normalizeOrder(item, 'Lender'));
-          }
-        }
-      }
-      return all;
-    }
+    // Fall back to the dashboard endpoints, which also trigger the automatic status updates.
+    if (role) return getDashboardOrders(role);
+    const [borrowed, lent] = await Promise.all([getDashboardOrders('Borrower'), getDashboardOrders('Lender')]);
+    return [...borrowed, ...lent];
   }
   return [];
 }
@@ -167,6 +226,38 @@ export interface BorrowRequestInput {
   endDate: string;
   message?: string;
 }
+
+// Machine-readable codes returned by POST /orders/ (HTTP 400). Branch on `error.code`.
+export type BorrowRequestErrorCode =
+  | 'borrowing_limit_reached'
+  | 'date_conflict'
+  | 'own_listing'
+  | 'listing_unavailable'
+  | 'unknown';
+
+export class BorrowRequestError extends Error {
+  code: BorrowRequestErrorCode;
+  conflictingRange?: { startDate: string; endDate: string };
+
+  constructor(
+    code: BorrowRequestErrorCode,
+    message: string,
+    conflictingRange?: { startDate: string; endDate: string },
+  ) {
+    super(message);
+    this.name = 'BorrowRequestError';
+    this.code = code;
+    this.conflictingRange = conflictingRange;
+    Object.setPrototypeOf(this, BorrowRequestError.prototype);
+  }
+}
+
+const BORROW_ERROR_CODES: BorrowRequestErrorCode[] = [
+  'borrowing_limit_reached',
+  'date_conflict',
+  'own_listing',
+  'listing_unavailable',
+];
 
 export async function createBorrowRequest(
   input: BorrowRequestInput
@@ -210,7 +301,7 @@ export async function createBorrowRequest(
     start_date: input.startDate,
     end_date: input.endDate,
     ...(input.message?.trim()
-      ? { message: input.message.trim() }
+      ? { notes: input.message.trim() }
       : {}),
   };
 
@@ -220,64 +311,23 @@ export async function createBorrowRequest(
     return normalizeOrder(data, 'Borrower');
   } catch (error: any) {
     const response = error?.response?.data ?? {};
+    const rawCode = String(response.code ?? '').toLowerCase();
+    const detail = extractApiError(error);
 
-    const code = String(
-      response.code ??
-      response.error_code ??
-      response.error ??
-      ''
-    ).toLowerCase();
+    const code: BorrowRequestErrorCode = (BORROW_ERROR_CODES as string[]).includes(rawCode)
+      ? (rawCode as BorrowRequestErrorCode)
+      : 'unknown';
 
-    const rawMessage =
-      response.detail ??
-      response.message ??
-      response.error_description ??
-      (typeof response.error === 'string' ? response.error : undefined) ??
-      extractApiError(error);
+    const range = response.conflicting_range;
+    const conflictingRange =
+      range?.start_date && range?.end_date
+        ? { startDate: String(range.start_date), endDate: String(range.end_date) }
+        : undefined;
 
-    const message = String(rawMessage).toLowerCase();
-
-    // Borrowing limit reached.
-    if (
-      code.includes('borrowing_limit') ||
-      message.includes('borrowing limit') ||
-      message.includes('maximum number of active')
-    ) {
-      throw new Error(
-        'BORROWING_LIMIT: You have reached your maximum borrowing limit. Please complete or return an active order before requesting another item.'
-      );
-    }
-
-    // Selected dates are unavailable.
-    if (
-      code.includes('date_conflict') ||
-      message.includes('date overlap') ||
-      message.includes('already reserved') ||
-      message.includes('unavailable dates')
-    ) {
-      throw new Error(
-        'DATE_CONFLICT: Your selected dates overlap with an existing reservation. Please select another date range.'
-      );
-    }
-
-    // Borrower is attempting to borrow their own listing.
-    if (
-      code.includes('own_listing') ||
-      message.includes('own listing') ||
-      message.includes('your own item')
-    ) {
-      throw new Error(
-        'OWN_LISTING: You cannot borrow your own listing.'
-      );
-    }
-
-    throw new Error(
-      typeof rawMessage === 'string'
-        ? rawMessage
-        : 'Unable to submit your request. Please try again.'
-    );
+    throw new BorrowRequestError(code, detail, conflictingRange);
   }
 }
+
 /* =========================================================
    CP-502  Accept or decline a borrow request  (owner: Member B)
 ========================================================= */
@@ -311,146 +361,255 @@ export async function cancelOrder(orderId: string, reason: string, details?: str
 }
 
 /* =========================================================
-   CP-504  Generate and validate handover code  (owner: Member B)
-   Lender shows the code, Borrower enters it. Codes are single-use, expire after 3 hours,
-   and lock after repeated wrong tries (HTML 26/27/28/38).
+   CP-504 / CP-505  Handover and return codes  (owner: Member B)
+   Lender shows the handover code, Borrower enters it; Borrower shows the return code,
+   Lender enters it. Codes are single-use, expire, and lock after repeated wrong tries.
+   The SERVER owns the expiry and lockout clocks, so screens always re-read them on mount
+   (FE-BUG-3003 / FE-BUG-3004). Nothing important lives only in app memory.
+
+   GET  /orders/{id}/handover-code/            active code + original expiry (never regenerates)
+   POST /codes/generate-handover/              issue / renew a code      { order_id }
+   GET  /codes/verify-handover/?order_id=      lockout status, no guess sent
+   POST /codes/verify-handover/                submit a code             { order_id, code }
+   (same four for `return`; verify-return also takes `flagged`)
 ========================================================= */
 
-export interface OrderCode { code: string; expiresAt: string } // ISO timestamp
+export type CodeKind = 'handover' | 'return';
+
+export interface OrderCode {
+  code: string;
+  expiresAt: string; // ISO timestamp from the server
+  remainingSeconds?: number;
+  isExpired?: boolean;
+}
 
 export type OrderCodeErrorKind = 'incorrect' | 'expired' | 'used' | 'locked';
 export class OrderCodeError extends Error {
   kind: OrderCodeErrorKind;
   lockedUntil?: string;
+  remainingSeconds?: number;
+  failedAttempts?: number;
 
-  constructor(kind: OrderCodeErrorKind, lockedUntil?: string) {
-    super(`Code ${kind}.`);
+  constructor(
+    kind: OrderCodeErrorKind,
+    extra: { lockedUntil?: string; remainingSeconds?: number; failedAttempts?: number; message?: string } = {},
+  ) {
+    super(extra.message || `Code ${kind}.`);
     this.name = 'OrderCodeError';
     this.kind = kind;
-    this.lockedUntil = lockedUntil;
+    this.lockedUntil = extra.lockedUntil;
+    this.remainingSeconds = extra.remainingSeconds;
+    this.failedAttempts = extra.failedAttempts;
     Object.setPrototypeOf(this, OrderCodeError.prototype);
   }
 }
 
-const MOCK_CODE = '630528';
+export const CODE_LOCKOUT_MAX_ATTEMPTS = 5;
+const CODE_LOCKOUT_MOCK_MS = 15 * 60 * 1000;
+const MOCK_CODES: Record<CodeKind, string> = { handover: '630528', return: '531846' };
 const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
 
-// Keeps the issued code and its original expiration timestamp while the app
-// process is running, including when the screen is unmounted and reopened.
-const handoverCodeCache = new Map<string, OrderCode>();
+const orderIdParam = (orderId: string): number | string => {
+  const n = Number(orderId);
+  return Number.isInteger(n) && n > 0 ? n : orderId;
+};
 
-function isValidOrderCode(value: OrderCode | undefined): value is OrderCode {
-  if (!value?.code || !value.expiresAt) return false;
-  const expiry = new Date(value.expiresAt).getTime();
-  return Number.isFinite(expiry) && expiry > Date.now();
-}
+// ---- mock state (only used when EXPO_PUBLIC_USE_MOCK is on) ----
+const mockIssuedCodes = new Map<string, OrderCode>();
+const mockLockouts = new Map<string, { failed: number; lockedUntil: number | null }>();
 
-export function clearHandoverCodeCache(orderId: string): void {
-  handoverCodeCache.delete(orderId);
-}
-
-// Returns the existing unexpired code when available. It only generates a
-// new code if none is cached or the previous code has expired.
-export async function getOrGenerateHandoverCode(orderId: string): Promise<OrderCode> {
-  const cached = handoverCodeCache.get(orderId);
-  if (isValidOrderCode(cached)) return cached;
-
-  return generateHandoverCode(orderId);
-}
-
-export async function generateHandoverCode(orderId: string): Promise<OrderCode> {
-  try {
-    let result: OrderCode;
-
-    if (USE_MOCK) {
-      result = {
-        code: MOCK_CODE,
-        expiresAt: new Date(Date.now() + THREE_HOURS_MS).toISOString(),
-      };
-    } else {
-      const { data } = await http.post<any>(`/orders/${orderId}/handover-code/generate/`);
-      const code = data?.code_value || data?.code;
-      const expiresAt = data?.expires_at || data?.expiresAt;
-
-      if (!code || !expiresAt || !Number.isFinite(new Date(expiresAt).getTime())) {
-        throw new Error(
-          'The handover API did not return a valid code expiration timestamp.'
-        );
-      }
-
-      result = { code: String(code), expiresAt: String(expiresAt) };
-    }
-
-    handoverCodeCache.set(orderId, result);
-    return result;
-  } catch (error: any) {
-    const message = error instanceof Error ? error.message : extractApiError(error);
-    throw new Error(message);
+function mockLockoutState(kind: CodeKind, orderId: string): OrderLockout {
+  const key = `${kind}:${orderId}`;
+  const saved = mockLockouts.get(key);
+  if (!saved) return { isLockedOut: false, remainingLockoutSeconds: 0, failedAttempts: 0 };
+  const remaining = saved.lockedUntil ? Math.max(0, Math.ceil((saved.lockedUntil - Date.now()) / 1000)) : 0;
+  if (saved.lockedUntil && remaining === 0) {
+    mockLockouts.delete(key);
+    return { isLockedOut: false, remainingLockoutSeconds: 0, failedAttempts: 0 };
   }
+  return {
+    isLockedOut: remaining > 0,
+    lockedUntil: saved.lockedUntil ? new Date(saved.lockedUntil).toISOString() : undefined,
+    remainingLockoutSeconds: remaining,
+    failedAttempts: saved.failed,
+  };
+}
+
+function mockRegisterFailure(kind: CodeKind, orderId: string): never {
+  const key = `${kind}:${orderId}`;
+  const failed = (mockLockouts.get(key)?.failed ?? 0) + 1;
+  if (failed >= CODE_LOCKOUT_MAX_ATTEMPTS) {
+    const lockedUntil = Date.now() + CODE_LOCKOUT_MOCK_MS;
+    mockLockouts.set(key, { failed, lockedUntil });
+    throw new OrderCodeError('locked', {
+      lockedUntil: new Date(lockedUntil).toISOString(),
+      remainingSeconds: Math.ceil(CODE_LOCKOUT_MOCK_MS / 1000),
+      failedAttempts: failed,
+    });
+  }
+  mockLockouts.set(key, { failed, lockedUntil: null });
+  throw new OrderCodeError('incorrect', { failedAttempts: failed });
+}
+
+function parseOrderCode(data: any): OrderCode {
+  const code = data?.code_value ?? data?.code;
+  let expiresAt = data?.expires_at ?? data?.expiresAt;
+  const remaining = Number(data?.remaining_seconds);
+
+  if ((!expiresAt || !Number.isFinite(new Date(expiresAt).getTime())) && Number.isFinite(remaining)) {
+    expiresAt = new Date(Date.now() + remaining * 1000).toISOString();
+  }
+  if (!code || !expiresAt || !Number.isFinite(new Date(expiresAt).getTime())) {
+    throw new Error('The code API did not return a valid code and expiration timestamp.');
+  }
+  return {
+    code: String(code),
+    expiresAt: String(expiresAt),
+    remainingSeconds: Number.isFinite(remaining) ? remaining : undefined,
+    isExpired: Boolean(data?.is_expired),
+  };
+}
+
+function isUsable(value: OrderCode | null | undefined): value is OrderCode {
+  if (!value || value.isExpired) return false;
+  return new Date(value.expiresAt).getTime() > Date.now();
+}
+
+// Reads the active code and its ORIGINAL expiry. Never regenerates. Returns null if there is none.
+async function fetchActiveCode(kind: CodeKind, orderId: string): Promise<OrderCode | null> {
+  if (USE_MOCK) {
+    const mock = mockIssuedCodes.get(`${kind}:${orderId}`);
+    return isUsable(mock) ? mock : null;
+  }
+  try {
+    const { data } = await http.get<any>(`/orders/${orderId}/${kind}-code/`);
+    const parsed = parseOrderCode(data);
+    return isUsable(parsed) ? parsed : null;
+  } catch (error: any) {
+    // 404 / 400 = no active code yet; anything else is a real failure.
+    const status = error?.response?.status;
+    if (status === 404 || status === 400 || status === 410) return null;
+    if (!isAxiosError(error)) return null; // malformed payload: treat as no usable code and regenerate
+    throw new Error(extractApiError(error));
+  }
+}
+
+// Issues a NEW code (or renews an expired one) and a fresh expiry.
+async function issueCode(kind: CodeKind, orderId: string): Promise<OrderCode> {
+  if (USE_MOCK) {
+    const result: OrderCode = {
+      code: MOCK_CODES[kind],
+      expiresAt: new Date(Date.now() + THREE_HOURS_MS).toISOString(),
+    };
+    mockIssuedCodes.set(`${kind}:${orderId}`, result);
+    return result;
+  }
+  try {
+    const { data } = await http.post<any>(`/codes/generate-${kind}/`, { order_id: orderIdParam(orderId) });
+    return parseOrderCode(data);
+  } catch (error: any) {
+    throw new Error(errorMessage(error));
+  }
+}
+
+async function getOrIssueCode(kind: CodeKind, orderId: string): Promise<OrderCode> {
+  const active = await fetchActiveCode(kind, orderId);
+  if (active) return active;
+  return issueCode(kind, orderId);
+}
+
+// Lockout status without sending a guess.
+export async function getCodeLockout(kind: CodeKind, orderId: string): Promise<OrderLockout> {
+  if (USE_MOCK) return mockLockoutState(kind, orderId);
+  const { data } = await http.get<any>(`/codes/verify-${kind}/`, { params: { order_id: orderIdParam(orderId) } });
+  return (
+    parseLockout(data) ?? { isLockedOut: false, remainingLockoutSeconds: 0, failedAttempts: 0 }
+  );
+}
+
+// Maps a failed verify request to an OrderCodeError (or a plain Error with the server message).
+function toCodeError(error: any): Error {
+  const data = error?.response?.data ?? {};
+  const status = error?.response?.status;
+  const serverCode = typeof data.code === 'string' ? data.code.toLowerCase() : '';
+  const detail = typeof data.detail === 'string' ? data.detail.toLowerCase() : '';
+  const failedAttempts = data.failed_attempts != null ? Number(data.failed_attempts) : undefined;
+
+  if (status === 429 || serverCode === 'lockout_active' || detail.includes('locked')) {
+    const remaining = Number(data.remaining_seconds ?? data.remaining_lockout_seconds);
+    return new OrderCodeError('locked', {
+      lockedUntil: typeof data.locked_until === 'string' ? data.locked_until : undefined,
+      remainingSeconds: Number.isFinite(remaining) ? remaining : undefined,
+      failedAttempts,
+    });
+  }
+  if (serverCode === 'invalid_code' || detail.includes('invalid') || detail.includes('incorrect')) {
+    return new OrderCodeError('incorrect', { failedAttempts });
+  }
+  if (serverCode === 'code_expired' || detail.includes('expire')) {
+    return new OrderCodeError('expired');
+  }
+  if (serverCode === 'code_used' || detail.includes('already been used') || detail.includes('used')) {
+    return new OrderCodeError('used');
+  }
+  return new Error(extractApiError(error));
+}
+
+/* ---------- CP-504 handover ---------- */
+
+// Used by the Lender "show code" screen: reuses the active code, generates only when none/expired.
+export async function getOrGenerateHandoverCode(orderId: string): Promise<OrderCode> {
+  return getOrIssueCode('handover', orderId);
+}
+
+// "Request New Code" button.
+export async function generateHandoverCode(orderId: string): Promise<OrderCode> {
+  return issueCode('handover', orderId);
+}
+
+// Kept so existing imports keep compiling; the server is now the source of truth.
+export function clearHandoverCodeCache(orderId: string): void {
+  mockIssuedCodes.delete(`handover:${orderId}`);
+}
+
+export function getHandoverLockout(orderId: string): Promise<OrderLockout> {
+  return getCodeLockout('handover', orderId);
 }
 
 // Throws OrderCodeError. On success the order becomes Active.
 export async function confirmHandover(orderId: string, code: string): Promise<Order> {
   if (USE_MOCK) {
-    if (code !== MOCK_CODE) throw new OrderCodeError('incorrect');
+    if (mockLockoutState('handover', orderId).isLockedOut) {
+      const l = mockLockoutState('handover', orderId);
+      throw new OrderCodeError('locked', { lockedUntil: l.lockedUntil, remainingSeconds: l.remainingLockoutSeconds });
+    }
+    if (code !== MOCK_CODES.handover) mockRegisterFailure('handover', orderId);
+    mockLockouts.delete(`handover:${orderId}`);
     clearHandoverCodeCache(orderId);
     return mockSetStatus(orderId, 'Active');
   }
   try {
-    const { data } = await http.post<any>(`/orders/${orderId}/handover-code/verify/`, { code });
-    clearHandoverCodeCache(orderId);
+    const { data } = await http.post<any>('/codes/verify-handover/', { order_id: orderIdParam(orderId), code });
     return normalizeOrder(data, 'Borrower');
   } catch (error: any) {
-    const codeErr = getApiErrorCode(error);
-    const detail = (error?.response?.data?.code || error?.response?.data?.detail || '') as string;
-    const lower = (typeof detail === 'string' ? detail : '').toLowerCase();
-    if (codeErr === 'invalid_code' || lower.includes('invalid') || lower.includes('incorrect')) {
-      throw new OrderCodeError('incorrect');
-    }
-    if (codeErr === 'code_expired' || lower.includes('expire')) {
-      throw new OrderCodeError('expired');
-    }
-    if (codeErr === 'code_used' || lower.includes('already been used') || lower.includes('used')) {
-      throw new OrderCodeError('used');
-    }
-    if (error?.response?.status === 429 || lower.includes('locked')) {
-      const responseData = error?.response?.data || {};
-      const lockedUntil =
-        responseData.locked_until ||
-        responseData.lockedUntil ||
-        responseData.lockout_expires_at ||
-        responseData.lockoutExpiresAt ||
-        responseData.data?.locked_until ||
-        responseData.data?.lockedUntil;
-
-      throw new OrderCodeError(
-        'locked',
-        typeof lockedUntil === 'string' ? lockedUntil : undefined
-      );
-    }
-    const message = extractApiError(error);
-    throw new Error(message);
+    throw toCodeError(error);
   }
 }
 
-/* =========================================================
-   CP-505  Generate and validate return code  (owner: Member B)
-   Borrower shows the code, Lender enters it. `damaged` turns on the damage flag:
-   the order becomes Disputed and the lender continues to the report form (HTML 40/63).
-========================================================= */
+/* ---------- CP-505 return ---------- */
+// `damaged` sends flagged:true; the order becomes Disputed and stays that way until an admin
+// resolves it. This is intentional (it blocks "Completed" while a damage claim is open).
+
+export async function getOrGenerateReturnCode(orderId: string): Promise<OrderCode> {
+  return getOrIssueCode('return', orderId);
+}
 
 export async function generateReturnCode(orderId: string): Promise<OrderCode> {
-  if (USE_MOCK) return { code: '531846', expiresAt: new Date(Date.now() + THREE_HOURS_MS).toISOString() };
-  try {
-    const { data } = await http.post<any>(`/orders/${orderId}/return-code/generate/`);
-    return {
-      code: data.code_value || data.code,
-      expiresAt: data.expires_at || data.expiresAt || new Date(Date.now() + THREE_HOURS_MS).toISOString(),
-    };
-  } catch (error: any) {
-    const message = extractApiError(error);
-    throw new Error(message);
-  }
+  return issueCode('return', orderId);
+}
+
+export function getReturnLockout(orderId: string): Promise<OrderLockout> {
+  return getCodeLockout('return', orderId);
 }
 
 export async function confirmReturn(
@@ -459,34 +618,81 @@ export async function confirmReturn(
   options: { damaged: boolean; description?: string }
 ): Promise<Order> {
   if (USE_MOCK) {
-    if (code !== '531846') throw new OrderCodeError('incorrect');
+    const l = mockLockoutState('return', orderId);
+    if (l.isLockedOut) {
+      throw new OrderCodeError('locked', { lockedUntil: l.lockedUntil, remainingSeconds: l.remainingLockoutSeconds });
+    }
+    if (code !== MOCK_CODES.return) mockRegisterFailure('return', orderId);
+    mockLockouts.delete(`return:${orderId}`);
+    mockIssuedCodes.delete(`return:${orderId}`);
     return mockSetStatus(orderId, options.damaged ? 'Disputed' : 'Completed');
   }
   try {
-    const payload = {
+    const { data } = await http.post<any>('/codes/verify-return/', {
+      order_id: orderIdParam(orderId),
       code,
       flagged: options.damaged,
-      dispute_description: options.description || '',
-    };
-    const { data } = await http.post<any>(`/orders/${orderId}/return-code/verify/`, payload);
+    });
     return normalizeOrder(data, 'Lender');
   } catch (error: any) {
-    const codeErr = getApiErrorCode(error);
-    const detail = (error?.response?.data?.code || error?.response?.data?.detail || '') as string;
-    const lower = (typeof detail === 'string' ? detail : '').toLowerCase();
-    if (codeErr === 'invalid_code' || lower.includes('invalid') || lower.includes('incorrect')) {
-      throw new OrderCodeError('incorrect');
+    throw toCodeError(error);
+  }
+}
+
+/* =========================================================
+   Damage report with photo/video evidence (FE-BUG-3005 part 2)
+   POST /orders/{id}/damage-report/  multipart: description + evidence (repeatable)
+========================================================= */
+
+export interface DamageEvidenceFile {
+  uri: string;
+  kind: 'photo' | 'video';
+  fileName?: string | null;
+  mimeType?: string | null;
+  file?: File; // web only: the picker's real File when available
+}
+
+export interface DamageReportResult {
+  id: number | string;
+  status: string;
+}
+
+async function appendEvidence(form: FormData, item: DamageEvidenceFile): Promise<void> {
+  const fallbackName = item.kind === 'photo' ? 'photo.jpg' : 'video.mp4';
+  const name = item.fileName || fallbackName;
+  const type = item.mimeType || (item.kind === 'photo' ? 'image/jpeg' : 'video/mp4');
+
+  if (Platform.OS === 'web') {
+    if (item.file) {
+      form.append('evidence', item.file);
+      return;
     }
-    if (codeErr === 'code_expired' || lower.includes('expire')) {
-      throw new OrderCodeError('expired');
-    }
-    if (codeErr === 'code_used' || lower.includes('already been used') || lower.includes('used')) {
-      throw new OrderCodeError('used');
-    }
-    if (error?.response?.status === 429 || lower.includes('locked')) {
-      throw new OrderCodeError('locked');
-    }
-    const message = extractApiError(error);
-    throw new Error(message);
+    const res = await fetch(item.uri);
+    const blob = await res.blob();
+    form.append('evidence', new File([blob], name, { type: blob.type || type }));
+    return;
+  }
+  form.append('evidence', { uri: item.uri, name, type } as any);
+}
+
+export async function submitDamageReport(
+  orderId: string,
+  description: string,
+  files: DamageEvidenceFile[],
+): Promise<DamageReportResult> {
+  if (USE_MOCK) {
+    await new Promise((r) => setTimeout(r, 500));
+    mockSetStatus(orderId, 'Disputed');
+    return { id: 1, status: 'submitted' };
+  }
+  try {
+    const form = new FormData();
+    form.append('description', description.trim());
+    for (const item of files) await appendEvidence(form, item);
+    // Content-Type is left unset so each platform adds the multipart boundary.
+    const { data } = await http.post<any>(`/orders/${orderId}/damage-report/`, form, { timeout: 120000 });
+    return { id: data?.id, status: String(data?.status ?? 'submitted') };
+  } catch (error: any) {
+    throw new Error(errorMessage(error));
   }
 }

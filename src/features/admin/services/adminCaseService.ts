@@ -7,7 +7,7 @@ export interface Evidence {
   media_type: 'photo' | 'video';
   created_at: string;
 }
-// Guide only shows "submitted". TODO: verify the status values after resolve/escalate.
+// Guide shows "submitted"; resolve/escalate move it on (values below match the client's expectations).
 export type CaseStatus = 'submitted' | 'resolved' | 'escalated' | string;
 // Guide only shows "refund_approved". TODO: ask backend for the full list of allowed values.
 export type Resolution = 'refund_approved' | 'refund_denied' | string;
@@ -71,7 +71,31 @@ const mock: AdminCaseDossier = {
 };
 const clone = () => JSON.parse(JSON.stringify(mock)) as AdminCaseDossier;
 
+// One row of GET /disputes/ (admin list). The detail screen uses getAdminCase for the full dossier.
+export interface DisputeSummary {
+  id: number;
+  case_id?: string;
+  order?: number;
+  order_id?: number;
+  status: CaseStatus;
+  description?: string;
+  created_at?: string;
+}
+
 // ---------- API (paths assume EXPO_PUBLIC_API_URL ends with /api/v1) ----------
+// GET /disputes/ with optional ?status=submitted filter (Admin).
+export async function listDisputes(status?: CaseStatus): Promise<DisputeSummary[]> {
+  if (USE_MOCK) {
+    await delay(300);
+    const m = mock.case;
+    return !status || status === m.status
+      ? [{ id: m.id, case_id: m.case_id, order_id: m.order_id, status: m.status, description: m.description, created_at: m.created_at }]
+      : [];
+  }
+  const { data } = await http.get<any>('/disputes/', { params: status ? { status } : undefined });
+  return Array.isArray(data) ? data : (data?.results ?? []);
+}
+
 export async function getAdminCase(caseId: string | number): Promise<AdminCaseDossier> {
   if (USE_MOCK) {
     await delay(400);

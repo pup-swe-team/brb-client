@@ -100,7 +100,7 @@ export default function DeactivateAccountScreen({ navigation }: any) {
         visible={blockedOpen}
         variant="blocked"
         title="Can't deactivate yet"
-        message={(blockers ?? []).join('\n') || 'You have open orders that must be resolved first.'}
+        message={`Account deactivation is blocked. You currently have open or pending orders that must be returned, completed, or cancelled before deactivating your account.${(blockers ?? []).length ? `\n\n${(blockers ?? []).join('\n')}` : ''}`}
         onCancel={() => setBlockedOpen(false)}
       />
     </SettingsShell>

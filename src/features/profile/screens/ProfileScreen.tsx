@@ -54,12 +54,14 @@ function parseDay(iso: string) {
 }
 
 function formatDay(iso: string, withYear: boolean) {
+  if (!iso) return '—'; // some dashboard payloads (e.g. pending requests) carry no dates
   const { y, m, d } = parseDay(iso);
   const base = `${MONTHS[m - 1]} ${d}`;
   return withYear ? `${base}, ${y}` : base;
 }
 
 function formatRange(start: string, end: string) {
+  if (!start || !end) return '—';
   const sameYear = parseDay(start).y === parseDay(end).y;
   return `${formatDay(start, !sameYear)} – ${formatDay(end, true)}`;
 }
@@ -304,9 +306,11 @@ export default function ProfileScreen({ navigation }: any) {
     verificationStatus === 'Unverified' ||
     verificationStatus === 'Rejected';
 
-  // Borrowing limit counts Active and Overdue orders (HTML 20, 43).
+  // Backend limit (error code borrowing_limit_reached): max 3 ACTIVE OR PENDING borrow requests,
+  // i.e. Requested, Confirmed, Active and Overdue orders all count.
+  const COUNTED_STATUSES = ['Requested', 'Confirmed', 'Active', 'Overdue'];
   const borrowingCount = (orders ?? []).filter(
-    (order) => order.status === 'Active' || order.status === 'Overdue',
+    (order) => COUNTED_STATUSES.includes(order.status),
   ).length;
   const atLimit = borrowingCount >= BORROWING_LIMIT;
   const fillPercent = Math.min(100, (borrowingCount / BORROWING_LIMIT) * 100);
@@ -549,7 +553,7 @@ export default function ProfileScreen({ navigation }: any) {
                     </Text>
 
                     <Text style={styles.progressLabel}>
-                      Active and overdue
+                      Active and pending
                     </Text>
                   </View>
 

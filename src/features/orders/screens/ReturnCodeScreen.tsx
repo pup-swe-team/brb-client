@@ -23,8 +23,10 @@ import {
   confirmReturn,
   generateReturnCode,
   getOrder,
+  getOrGenerateReturnCode,
   OrderCodeError,
 } from '../services/ordersService';
+import { formatLockoutTime, useCodeLockout } from '../hooks/useCodeLockout';
 
 type Mode = 'show' | 'enter';
 
@@ -42,8 +44,9 @@ export default function ReturnCodeScreen({ navigation, route }: any) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [attempts, setAttempts] = useState(0);
-  const [locked, setLocked] = useState(false);
+  // Server-backed lockout (GET /codes/verify-return/?order_id=): survives refresh and navigation.
+  const lockout = useCodeLockout('return', orderId);
+  const { locked, remaining: lockRemaining, refresh: refreshLockout } = lockout;
   const [completed, setCompleted] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -67,16 +70,20 @@ export default function ReturnCodeScreen({ navigation, route }: any) {
       const currentOrder = await getOrder(orderId, orderRole);
       setOrder(currentOrder);
       if (mode === 'show') {
-        const result = await generateReturnCode(orderId);
+        // Reuse the active code and its ORIGINAL expiry; only generate if none/expired.
+        const result = await getOrGenerateReturnCode(orderId);
         setCode(result.code);
         setExpiresAt(result.expiresAt);
+      } else {
+        setEnteredCode('');
+        await refreshLockout();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load the return code.');
     } finally {
       setLoading(false);
     }
-  }, [orderId, orderRole, mode]);
+  }, [orderId, orderRole, mode, refreshLockout]);
 
   useFocusEffect(
     useCallback(() => {
@@ -152,18 +159,19 @@ export default function ReturnCodeScreen({ navigation, route }: any) {
       if (err instanceof OrderCodeError && err.kind === 'expired') {
         setError('This code has expired. Ask the borrower for a new code.');
       } else if (err instanceof OrderCodeError && err.kind === 'locked') {
-        setLocked(true);
-        setError('Code entry is locked. Please request assistance.');
+        lockout.applyError(err);
+        setEnteredCode('');
+        setError('');
       } else if (err instanceof OrderCodeError && err.kind === 'used') {
         setError('This code has already been used. Request a new code.');
       } else if (err instanceof OrderCodeError && err.kind === 'incorrect') {
-        const nextAttempts = attempts + 1;
-        setAttempts(nextAttempts);
-        if (nextAttempts >= 5) {
-          setLocked(true);
-          setError('Too many incorrect attempts. Code entry is locked.');
+        const left = lockout.registerIncorrect(err);
+        if (left <= 0) {
+          await lockout.refresh();
+          setEnteredCode('');
+          setError('');
         } else {
-          setError('Incorrect code. Please check the code and try again.');
+          setError(`Incorrect code. ${left} attempt(s) remaining.`);
         }
       } else {
         setError(err instanceof Error ? err.message : 'Unable to confirm the return. Please try again.');
@@ -207,6 +215,13 @@ export default function ReturnCodeScreen({ navigation, route }: any) {
                     <Text style={styles.timer}>{remaining > 0 ? formatTime(remaining) : '00:00:00'}</Text>
                   </View>
                 </>
+              ) : locked ? (
+                <View style={styles.lockedBox} accessibilityRole="alert">
+                  <Text style={styles.lockedTitle}>Code Entry Locked</Text>
+                  <Text style={styles.lockedText}>
+                    Too many failed attempts. Please try again in {formatLockoutTime(lockRemaining)}.
+                  </Text>
+                </View>
               ) : (
                 <CodeInput
                   value={enteredCode}
@@ -348,6 +363,9 @@ const styles = StyleSheet.create({
   notice: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, borderWidth: 1, borderColor: colors.info, borderRadius: 8, padding: spacing.md },
   noticeText: { ...text.caption, color: colors.info, fontSize: 10, lineHeight: 15, flex: 1 },
   errorText: { ...text.caption, color: colors.error },
+  lockedBox: { borderWidth: 1, borderColor: colors.error, borderRadius: 10, backgroundColor: colors.white, padding: spacing.md, alignItems: 'center', gap: spacing.xs },
+  lockedTitle: { ...text.body, color: colors.error, fontWeight: '700' },
+  lockedText: { ...text.caption, color: colors.textSecondary, textAlign: 'center' },
   footer: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xl, gap: spacing.sm, backgroundColor: colors.white },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
   successCard: { width: '100%', maxWidth: 360, backgroundColor: colors.white, borderRadius: 14, padding: spacing.lg, gap: spacing.md },

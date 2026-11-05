@@ -23,7 +23,7 @@ import { VerifiedLabel } from '../../../shared/components';
 import { useVerificationStatus } from '../../profile/hooks/useVerificationStatus';
 import { PublicLenderProfile, getLenderProfile } from '../../profile/services/lenderProfile';
 import { AvailabilityCalendar } from '../components/AvailabilityCalendar';
-import { createBorrowRequest } from '../../orders/services/ordersService';
+import { BorrowRequestError, createBorrowRequest } from '../../orders/services/ordersService';
 import { http } from '../../../services/http';
 type ReservedDateRange = {
   startDate: string;
@@ -53,6 +53,8 @@ export default function ItemDetailScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const itemId = item?.id || route?.params?.id;
   const [detailData, setDetailData] = useState<any>(null);
+  // Bumped after a date_conflict so the calendar reloads the latest blocked_dates.
+  const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => {
     if (!itemId) return;
     let active = true;
@@ -66,7 +68,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
     return () => {
       active = false;
     };
-  }, [itemId]);
+  }, [itemId, reloadKey]);
   const title = detailData?.title || item.title || 'Untitled listing';
   const author = detailData?.lender?.full_name || item.author || '';
   const price = detailData?.rate_per_day
@@ -92,10 +94,11 @@ export default function ItemDetailScreen({ navigation, route }: any) {
   // Availability window of this listing (YYYY-MM-DD). Missing = no restriction.
   const availableFrom: string | undefined = detailData?.availability_windows?.[0]?.start_date || item.availableFrom;
   const availableTo: string | undefined = detailData?.availability_windows?.[0]?.end_date || item.availableTo;
-  // Expected API field: reserved_date_ranges: [{ start_date, end_date }].
-  // active_orders is a count, so it cannot identify reserved dates.
+  // GET /listings/{id}/ returns blocked_dates: [{ start_date, end_date, reason }] (inclusive).
+  // The backend merges lender blocks, confirmed, active and overdue orders into it, so any date
+  // inside a range is disabled. reserved_date_ranges is kept as a fallback for older payloads.
   const reservedRanges: ReservedDateRange[] = (
-    detailData?.reserved_date_ranges ?? item.reservedRanges ?? []
+    detailData?.blocked_dates ?? detailData?.reserved_date_ranges ?? item.reservedRanges ?? []
   )
     .map((range: any) => ({
       startDate: String(range?.start_date ?? range?.startDate ?? ''),
@@ -162,8 +165,13 @@ export default function ItemDetailScreen({ navigation, route }: any) {
     }
     setCalendarVisible(false);
   };
+  const isListingUnavailable = detailData?.is_available === false;
   const openRequest = () => {
     if (statusLoading) return;
+    if (isListingUnavailable) {
+      showRequestError('Listing unavailable', 'This listing is not available right now.');
+      return;
+    }
     // Only verified users can send a request.
     if (verificationStatus !== 'Verified') {
       setVerifyPromptVisible(true);
@@ -236,38 +244,46 @@ export default function ItemDetailScreen({ navigation, route }: any) {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Please try again.';
-      const normalizedMessage = errorMessage.toLowerCase();
 
-      if (
-        normalizedMessage.includes('borrowing_limit') ||
-        normalizedMessage.includes('borrowing limit') ||
-        normalizedMessage.includes('maximum number of active')
-      ) {
-        showRequestError(
-          'Borrowing limit reached',
-          'You have reached the maximum number of active borrow requests. Please complete or return an active order before requesting another item.',
-        );
-      } else if (
-        normalizedMessage.includes('date_conflict') ||
-        normalizedMessage.includes('date overlap') ||
-        normalizedMessage.includes('already reserved') ||
-        normalizedMessage.includes('unavailable dates')
-      ) {
-        showRequestError(
-          'Dates unavailable',
-          'Your selected dates overlap with an existing reservation. Please choose another date range.',
-        );
-      } else if (
-        normalizedMessage.includes('own_listing') ||
-        normalizedMessage.includes('own listing') ||
-        normalizedMessage.includes('your own item')
-      ) {
-        showRequestError(
-          'Cannot borrow your own listing',
-          'You cannot send a borrow request for an item that you listed yourself.',
-        );
-      } else {
-        showRequestError('Request failed', errorMessage);
+      // Branch on the backend's machine-readable `code` (POST /orders/ -> 400).
+      switch (error instanceof BorrowRequestError ? error.code : 'unknown') {
+        case 'borrowing_limit_reached':
+          setConfirmVisible(false);
+          setRequestVisible(false);
+          showRequestError(
+            'Borrowing limit reached',
+            'You can only have 3 active or pending borrow requests at the same time. Please complete, return or cancel one before requesting another item.',
+          );
+          break;
+        case 'date_conflict': {
+          const range = error instanceof BorrowRequestError ? error.conflictingRange : undefined;
+          setConfirmVisible(false);
+          setRequestVisible(false);
+          showRequestError(
+            'Dates unavailable',
+            range
+              ? `This item is already reserved from ${formatDisplayDate(range.startDate)} to ${formatDisplayDate(range.endDate)}. Please choose another date range.`
+              : 'Your selected dates overlap with an existing reservation. Please choose another date range.',
+          );
+          setCheckout('');
+          setReturnDate('');
+          setReloadKey((k) => k + 1); // refresh blocked_dates on the calendar
+          break;
+        }
+        case 'own_listing':
+          showRequestError(
+            'Cannot borrow your own listing',
+            'You cannot send a borrow request for an item that you listed yourself.',
+          );
+          break;
+        case 'listing_unavailable':
+          showRequestError(
+            'Listing unavailable',
+            'This listing is paused, suspended or archived and can’t be requested right now.',
+          );
+          break;
+        default:
+          showRequestError('Request failed', errorMessage);
       }
     } finally {
       setSubmitting(false);
@@ -324,7 +340,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
           </View>
           <View style={styles.availableBadge}>
             <View style={styles.availableDot} />
-            <Text style={styles.availableText}>Available</Text>
+            <Text style={styles.availableText}>{isListingUnavailable ? 'Unavailable' : 'Available'}</Text>
           </View>
         </View>
         <View style={styles.titleSection}>

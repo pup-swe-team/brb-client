@@ -1,8 +1,8 @@
 import { Platform } from 'react-native';
 import { http, USE_MOCK, clearAuthTokens } from '../../../services/http';
 
-// NOTE: the backend contract for these endpoints is not documented yet (docs/BACKEND_CONNECTION.md).
-// Paths below are assumptions; adjust them when the users module ships them.
+// Deactivation uses the documented endpoint POST /users/me/deactivate/ (BACKEND_API_COORDINATION_GUIDE 3.3).
+// The other paths below are still assumptions until the backend documents them.
 // Mock switches: EXPO_PUBLIC_MOCK_NO_BLOCKERS=true lets deactivation succeed in mock mode.
 
 export type AccountProfile = {
@@ -172,29 +172,44 @@ export async function saveNotificationPrefs(prefs: NotificationPrefs): Promise<v
 }
 
 // Open orders or requests that stop an account from being deactivated.
+// The backend has no separate "check" endpoint: POST /users/me/deactivate/ itself answers
+// 400 { code: 'has_unsettled_orders', detail, open_orders, open_unreturned_cases }.
+// So the real pre-check is empty and the block is discovered on submit (see deactivateAccount).
 export async function getDeactivationBlockers(): Promise<string[]> {
   if (USE_MOCK) {
     await delay(250);
     if (process.env.EXPO_PUBLIC_MOCK_NO_BLOCKERS === 'true') return [];
     return ['You are still borrowing 1 item (T-Square). Return it first.', 'You have 1 overdue item (Concepts of Programming Languages).'];
   }
-  const { data } = await http.get<{ blockers: string[] }>('/auth/deactivate/check/');
-  return data.blockers ?? [];
+  return [];
+}
+
+function blockersFromResponse(data: any): string[] {
+  const list: string[] = [];
+  const open = Number(data?.open_orders ?? 0);
+  const cases = Number(data?.open_unreturned_cases ?? 0);
+  if (open > 0) list.push(`You have ${open} active or pending order${open === 1 ? '' : 's'} that must be returned, completed or cancelled first.`);
+  if (cases > 0) list.push(`You have ${cases} unreturned item case${cases === 1 ? '' : 's'} that must be resolved first.`);
+  if (list.length === 0 && typeof data?.detail === 'string') list.push(data.detail);
+  return list;
 }
 
 export async function deactivateAccount(password: string): Promise<void> {
-  const blockers = await getDeactivationBlockers();
-  if (blockers.length > 0) throw new DeactivationBlockedError(blockers);
-  if (!USE_MOCK) {
-    try {
-      await http.post('/auth/deactivate/', { password });
-    } catch (e: any) {
-      const list = e?.response?.data?.blockers;
-      if (e?.response?.status === 409 && Array.isArray(list)) throw new DeactivationBlockedError(list);
-      throw e;
-    }
-  } else {
+  if (USE_MOCK) {
+    const blockers = await getDeactivationBlockers();
+    if (blockers.length > 0) throw new DeactivationBlockedError(blockers);
     await delay();
+    await clearAuthTokens();
+    return;
+  }
+  try {
+    await http.post('/users/me/deactivate/', { password, confirm: true });
+  } catch (e: any) {
+    const data = e?.response?.data;
+    if (data?.code === 'has_unsettled_orders') {
+      throw new DeactivationBlockedError(blockersFromResponse(data));
+    }
+    throw e;
   }
   await clearAuthTokens();
 }

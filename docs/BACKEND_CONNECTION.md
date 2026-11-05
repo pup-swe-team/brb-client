@@ -80,12 +80,36 @@ Auth tokens are stored via `expo-secure-store` (`src/services/http.ts`):
   `{ uri, name, type }` object; `Content-Type` is left unset so each platform's
   serialiser adds the boundary.
 
-### ORDERS / LISTINGS — `apps/orders`
+### ORDERS / LISTINGS / CODES / DISPUTES — branch `merging/sprint-3`
 
-- **No `urls.py` and no endpoints exist on the backend yet.**
-- `src/features/orders/services/ordersService.ts` has a placeholder real call
-  (`GET /orders/`) that will 404 until the backend team ships the module.
-- Backend `OrderStatus` strings must be confirmed before wiring real list UIs.
+Source: `BACKEND_API_COORDINATION_GUIDE` (Nov 4, 2026). All endpoints below are live.
+Backend `status` strings are mapped to UI labels by `mapBackendStatus` in `ordersService.ts`
+(`handover_pending` -> Confirmed, `in_possession` / `return_pending` -> Active, others 1:1).
+
+| Area | Method + path | Used by |
+|---|---|---|
+| Calendar | `GET /listings/{id}/` -> `blocked_dates: [{ start_date, end_date, reason }]`, `is_available` | `ItemDetailScreen` |
+| Request | `POST /orders/` `{ listing_id, start_date, end_date, notes }` | `createBorrowRequest` |
+| Orders | `GET /orders/`, `GET /orders/{id}/` (include `borrower_name`, `lender_name`, lockout fields) | `getMyOrders`, `getOrder` |
+| Dashboards | `GET /users/me/borrower-dashboard/`, `/lender-dashboard/` (fallback if `/orders/` fails) | `getMyOrders` |
+| Codes | `GET /orders/{id}/handover-code/`, `/return-code/` (read active code + original expiry) | `getOrGenerate*Code` |
+| Codes | `POST /codes/generate-handover/`, `/generate-return/` `{ order_id }` | "Request New Code" |
+| Lockout | `GET /codes/verify-handover/?order_id=`, `/verify-return/?order_id=` | `useCodeLockout` |
+| Verify | `POST /codes/verify-handover/` `{ order_id, code }`; `POST /codes/verify-return/` `{ order_id, code, flagged }` | `confirmHandover`, `confirmReturn` |
+| Damage | `POST /orders/{id}/damage-report/` multipart `description` + `evidence` (repeatable) | `submitDamageReport` |
+| Admin | `GET /disputes/`, `GET /disputes/{id}/`, `POST /disputes/{id}/resolve/`, `/escalate/` | `adminCaseService` |
+| Account | `POST /users/me/deactivate/` `{ password, confirm: true }` | `accountService` |
+
+Error `code` values the UI branches on: `borrowing_limit_reached`, `date_conflict`
+(`conflicting_range`), `own_listing`, `listing_unavailable`, `has_unsettled_orders`
+(`open_orders`, `open_unreturned_cases`), `lockout_active` (HTTP 429: `locked_until`,
+`remaining_seconds`), `invalid_code`.
+
+Behavior notes:
+- Overdue / Expired are set by the backend whenever orders or dashboards are read. The app only reads `status`.
+- A return flagged for damage makes the order `Disputed` on purpose, until an admin resolves it.
+- The borrowing limit (3) counts active **and pending** requests (Requested, Confirmed, Active, Overdue).
+- There is no deactivation pre-check endpoint; the block comes back from the deactivate POST.
 
 ---
 
@@ -99,8 +123,8 @@ Auth tokens are stored via `expo-secure-store` (`src/services/http.ts`):
 2. **Refresh-token handling.** `authService.refreshAccessToken()` exists but
    the axios interceptor does not yet retry a request once with a fresh access
    token on 401. `http.ts` has a `// TODO` for this.
-3. **Orders / listings.** Entire backend module pending. Keep
-   `ordersService.ts` mock-first until endpoints land.
+3. **Accept / decline / cancel.** `POST /orders/{id}/accept|decline|cancel/` are not in the
+   Sprint 3 guide; confirm their paths with the backend.
 4. **Home / Search / Chat / AddItem screens** still use static local data in
    the UI — no service layer yet. Wire them the same way
    `authService.ts`/`verification.ts` were wired: mock-first, then swap the

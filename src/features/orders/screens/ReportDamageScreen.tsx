@@ -19,6 +19,7 @@ import {
   TopBar,
 } from '../../../shared/components';
 import { colors, spacing, text, radius } from '../../../theme';
+import { DamageEvidenceFile, submitDamageReport } from '../services/ordersService';
 
 type EvidenceFile = ImagePicker.ImagePickerAsset;
 
@@ -29,6 +30,7 @@ export default function ReportDamageScreen({ navigation, route }: any) {
   const [photo, setPhoto] = useState<EvidenceFile | null>(null);
   const [video, setVideo] = useState<EvidenceFile | null>(null);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const selectEvidence = async (type: 'photo' | 'video') => {
     try {
@@ -67,7 +69,9 @@ export default function ReportDamageScreen({ navigation, route }: any) {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (submitting) return;
+
     if (!description.trim()) {
       setError('Please describe the damage or missing items.');
       return;
@@ -83,11 +87,26 @@ export default function ReportDamageScreen({ navigation, route }: any) {
       return;
     }
 
-    // TODO: Connect to the backend damage-report endpoint.
-    Alert.alert(
-      'Submission not connected',
-      'Your evidence is selected, but the damage-report API still needs to be connected.',
-    );
+    const evidence: DamageEvidenceFile[] = [
+      { kind: 'photo', uri: photo.uri, fileName: photo.fileName, mimeType: photo.mimeType, file: photo.file },
+      { kind: 'video', uri: video.uri, fileName: video.fileName, mimeType: video.mimeType, file: video.file },
+    ];
+
+    setSubmitting(true);
+    setError('');
+    try {
+      await submitDamageReport(orderId, description, evidence);
+      // The order stays "Disputed" until an admin resolves the case (intentional).
+      Alert.alert(
+        'Damage report submitted',
+        'Your report and evidence were sent for review. The order stays Disputed until it is resolved.',
+        [{ text: 'OK', onPress: () => navigation.navigate('OrderDetail', { orderId, role: 'Lender' }) }],
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to submit the damage report. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -104,7 +123,7 @@ export default function ReportDamageScreen({ navigation, route }: any) {
             </Text>
 
             <Text style={styles.subtitle}>
-              Describe the item's condition after it was returned. Provide
+              Describe the item&apos;s condition after it was returned. Provide
               photo and video evidence to support your report.
             </Text>
 
@@ -126,7 +145,7 @@ export default function ReportDamageScreen({ navigation, route }: any) {
               />
 
               <Text style={styles.helper}>
-                Include details about the item's condition and missing parts.
+                Include details about the item&apos;s condition and missing parts.
               </Text>
             </Card>
 
@@ -238,6 +257,8 @@ export default function ReportDamageScreen({ navigation, route }: any) {
         <Button
           title="Submit Damage Report"
           onPress={handleSubmit}
+          loading={submitting}
+          disabled={submitting}
         />
       </View>
     </View>
