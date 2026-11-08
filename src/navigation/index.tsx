@@ -49,6 +49,13 @@ import ReturnCodeScreen from '../features/orders/screens/ReturnCodeScreen';
 import ReportDamageScreen from '../features/orders/screens/ReportDamageScreen';
 import { AdminCaseScreen } from '../features/admin/screens/AdminCaseScreen';
 
+/* =========================================================
+   NOTIFICATIONS + REVIEWS (Sprint 4)
+========================================================= */
+
+import NotificationsScreen from '../features/notifications/screens/NotificationsScreen';
+import ReviewFormScreen from '../features/reviews/screens/ReviewFormScreen';
+
 
 /* =========================================================
    DASHBOARD
@@ -323,6 +330,7 @@ const linking: LinkingOptions<RootStackParamList> = {
       ChangeEmail: 'settings/change-email',
       NotificationPreferences: 'settings/notifications',
       DeactivateAccount: 'settings/deactivate',
+      Notifications: 'notifications',
       VerifyIdentity: 'verify-identity',
       MyListings: 'my-listings',
       Gallery: 'gallery',
@@ -512,6 +520,14 @@ export function RootNavigator() {
         <Stack.Screen
           name="AdminCase"
           component={AdminCaseScreen}
+        />
+        <Stack.Screen
+          name="Notifications"
+          component={NotificationsScreen}
+        />
+        <Stack.Screen
+          name="ReviewForm"
+          component={ReviewFormScreen}
         />
 
         {/* =================================================

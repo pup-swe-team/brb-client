@@ -46,6 +46,10 @@ export type RootStackParamList = {
   ReportDamage: { orderId: string };
   AdminCase: { caseId: string };
 
+  // Sprint 4
+  Notifications: undefined;
+  ReviewForm: { orderId: string };
+
   SignUpMessage: undefined;
 
   VerifyEmail:

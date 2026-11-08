@@ -27,6 +27,7 @@ import type { AuthUser } from '../../auth/services/authService';
 import { useVerificationStatus } from '../hooks/useVerificationStatus';
 import { DashboardSwitch } from '../../dashboard/components/DashboardSwitch';
 import { LenderDashboard } from '../../dashboard/components/LenderDashboard';
+import { ReviewsSection } from '../../reviews/components/ReviewsSection';
 import { OverdueIndicator } from '../../dashboard/components/OverdueIndicator';
 import { BORROWING_LIMIT, getMyOrders } from '../../orders/services/ordersService';
 import { applyForLenderRole, getLenderRoleStatus } from '../services/lenderRoleService';
@@ -675,6 +676,9 @@ export default function ProfileScreen({ navigation }: any) {
               )}
             </>
           )}
+
+          {/* REVIEWS (CP-601, Izzy edits ReviewsSection) */}
+          <ReviewsSection />
 
           <View style={styles.bottomSpace} />
         </ScrollView>

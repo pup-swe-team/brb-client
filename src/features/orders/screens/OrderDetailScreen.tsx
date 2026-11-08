@@ -17,6 +17,7 @@ import { CancelOrderAction } from '../components/CancelOrderAction';
 import { HandoverCodeAction } from '../components/HandoverCodeAction';
 import { RespondToRequestActions } from '../components/RespondToRequestActions';
 import { ReturnCodeAction } from '../components/ReturnCodeAction';
+import { ReviewAction } from '../../reviews/components/ReviewAction';
 
 export default function OrderDetailScreen({ navigation, route }: any) {
   const { orderId, role: roleParam } = route.params as {
@@ -67,6 +68,7 @@ export default function OrderDetailScreen({ navigation, route }: any) {
   const showHandover = status === 'Confirmed';
   const showReturn = status === 'Active' || status === 'Overdue';
   const showCancel = status === 'Requested' || status === 'Confirmed';
+  const showReview = status === 'Completed'; // CP-601 (Izzy)
 
   return (
     <View style={s.root}>
@@ -122,6 +124,7 @@ export default function OrderDetailScreen({ navigation, route }: any) {
             {showHandover && <HandoverCodeAction {...slotProps} />}
             {showReturn && <ReturnCodeAction {...slotProps} />}
             {showCancel && <CancelOrderAction {...slotProps} />}
+            {showReview && <ReviewAction {...slotProps} />}
           </>
         )}
       </ScreenContainer>

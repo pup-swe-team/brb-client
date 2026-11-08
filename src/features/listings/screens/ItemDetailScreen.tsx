@@ -24,6 +24,7 @@ import { useVerificationStatus } from '../../profile/hooks/useVerificationStatus
 import { PublicLenderProfile, getLenderProfile } from '../../profile/services/lenderProfile';
 import { AvailabilityCalendar } from '../components/AvailabilityCalendar';
 import { BorrowRequestError, createBorrowRequest } from '../../orders/services/ordersService';
+import { ReportButton } from '../../reports/components/ReportButton';
 import { http } from '../../../services/http';
 type ReservedDateRange = {
   startDate: string;
@@ -460,6 +461,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
               />
             ) : null}
           </Pressable>
+          <ReportButton targetType="listing" targetId={itemId ? String(itemId) : undefined} />
           <View style={styles.divider} />
           <Text style={styles.sectionTitle}>
             Product Reviews <Text style={styles.reviewCount}>({reviewTotal})</Text>

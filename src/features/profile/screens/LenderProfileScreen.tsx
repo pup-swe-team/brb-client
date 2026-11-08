@@ -8,6 +8,7 @@ import { Button, ScreenContainer } from '../../../shared/components';
 import { VerifiedBadge } from '../../../shared/components/VerifiedLabel';
 import { LenderListingCard } from '../components/LenderListingCard';
 import { LenderReviewCard } from '../components/LenderReviewCard';
+import { ReportButton } from '../../reports/components/ReportButton';
 import { StarRating } from '../components/StarRating';
 import { PublicLenderProfile, getLenderProfile } from '../services/lenderProfile';
 
@@ -176,6 +177,10 @@ export default function LenderProfileScreen({ navigation, route }: any) {
             <Text style={s.statValue}>{lender.listings.length}</Text>
             <Text style={s.statLabel}>Active listings</Text>
           </View>
+        </View>
+
+        <View style={s.section}>
+          <ReportButton targetType="user" targetId={lender.id} />
         </View>
 
         {/* ACTIVE LISTINGS */}

@@ -4,6 +4,7 @@ import { colors, radius, spacing } from '../../../theme';
 import { VerifiedLabel } from '../../../shared/components/VerifiedLabel';
 import { LenderReview } from '../services/lenderTypes';
 import { StarRating } from './StarRating';
+import { ReportButton } from '../../reports/components/ReportButton';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function fmt(d: string) {
@@ -24,6 +25,7 @@ export function LenderReviewCard({ review }: { review: LenderReview }) {
       <StarRating value={review.rating} size={11} />
       <Text style={s.item} numberOfLines={1}>Borrowed: {review.itemTitle}</Text>
       <Text style={s.comment}>{review.comment}</Text>
+      <ReportButton targetType="review" targetId={review.id} />
     </View>
   );
 }
