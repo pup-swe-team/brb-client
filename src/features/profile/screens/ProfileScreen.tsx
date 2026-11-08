@@ -28,6 +28,7 @@ import { useVerificationStatus } from '../hooks/useVerificationStatus';
 import { DashboardSwitch } from '../../dashboard/components/DashboardSwitch';
 import { LenderDashboard } from '../../dashboard/components/LenderDashboard';
 import { ReviewsSection } from '../../reviews/components/ReviewsSection';
+import { RecentNotificationsPanel } from '../../dashboard/components/RecentNotificationsPanel';
 import { OverdueIndicator } from '../../dashboard/components/OverdueIndicator';
 import { BORROWING_LIMIT, getMyOrders } from '../../orders/services/ordersService';
 import { applyForLenderRole, getLenderRoleStatus } from '../services/lenderRoleService';
@@ -184,10 +185,23 @@ function BorrowedItemCard({
   );
 }
 
-export default function ProfileScreen({ navigation }: any) {
+export default function ProfileScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
+  // CP-205: the "Can't revoke yet" sheet sends the user here with initialRole: 'Lender' (View My Lends).
   const [role, setRole] = useState<'Borrower' | 'Lender'>(
-    'Borrower',
+    route?.params?.initialRole === 'Lender' ? 'Lender' : 'Borrower',
+  );
+
+  // The Profile tab stays mounted, so apply a new initialRole param when it changes.
+  // The param is cleared once applied, so later visits start from the user's own choice.
+  const initialRole = route?.params?.initialRole;
+  useFocusEffect(
+    useCallback(() => {
+      if (initialRole === 'Lender' || initialRole === 'Borrower') {
+        setRole(initialRole);
+        navigation.setParams({ initialRole: undefined });
+      }
+    }, [initialRole, navigation]),
   );
 
   // Real account details from GET /auth/me/ (BE-BUG-0002). The profile card
@@ -590,36 +604,8 @@ export default function ProfileScreen({ navigation }: any) {
             </>
           )}
 
-          {/* NOTIFICATION */}
-          <View style={styles.section}>
-            <Text style={styles.notificationTitle}>
-              Notification
-            </Text>
-
-            <Pressable style={styles.notificationCard}>
-              <View style={styles.notificationIcon}>
-                <Ionicons
-                  name="notifications"
-                  size={16}
-                  color={colors.error}
-                />
-              </View>
-
-              <Text
-                style={styles.notificationText}
-                numberOfLines={1}
-              >
-                Your Lab Apron has been returned by
-                Danielo Kim Ang
-              </Text>
-
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={colors.textMuted}
-              />
-            </Pressable>
-          </View>
+          {/* RECENT NOTIFICATIONS (CP-202) */}
+          <RecentNotificationsPanel navigation={navigation} />
 
           {role === 'Borrower' && (
             <>
@@ -983,13 +969,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
 
-  notificationTitle: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: spacing.sm,
-  },
-
   sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1017,34 +996,6 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 9,
     fontWeight: '700',
-  },
-
-  /* NOTIFICATION */
-  notificationCard: {
-    minHeight: 38,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.card,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.sm,
-  },
-
-  notificationIcon: {
-    width: 25,
-    height: 25,
-    borderRadius: radius.button,
-    backgroundColor: colors.goldSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-
-  notificationText: {
-    flex: 1,
-    color: colors.textSecondary,
-    fontSize: 8,
   },
 
   /* ITEM CARD */
