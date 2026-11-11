@@ -124,11 +124,23 @@ export default function ItemDetailScreen({ navigation, route }: any) {
       active = false;
     };
   }, [lenderId]);
-  const reviews = (lender?.reviews ?? []).filter((r) => r.itemTitle === title);
-  const reviewTotal = reviews.length;
-  const countFor = (stars: number) => reviews.filter((r) => r.rating === stars).length;
-  const barWidth = (stars: number): `${number}%` =>
-    `${reviewTotal ? Math.round((countFor(stars) / reviewTotal) * 100) : 0}%`;
+  
+const reviews = (lender?.reviews ?? []).filter(
+  (review) =>
+    review.itemTitle.trim().toLowerCase() ===
+    title.trim().toLowerCase()
+);
+
+const reviewTotal = reviews.length;
+
+const countFor = (stars: number) =>
+  reviews.filter((review) => review.rating === stars).length;
+
+const barWidth = (stars: number): `${number}%` =>
+  `${reviewTotal
+    ? Math.round((countFor(stars) / reviewTotal) * 100)
+    : 0}%`;
+
   const [checkout, setCheckout] = useState('');
   const [returnDate, setReturnDate] = useState('');
   const [calendarTarget, setCalendarTarget] = useState<'checkout' | 'return'>(
