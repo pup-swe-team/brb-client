@@ -160,9 +160,9 @@ export default function NotificationsScreen({ navigation }: any) {
                 <Text style={[s.markAll, unreadCount === 0 && s.markAllDisabled]}>Mark all as read</Text>
               </Pressable>
             </View>
-          ) : null
+          ) : undefined
         }
-        ListFooterComponent={actionError ? <Text style={s.errorText}>{actionError}</Text> : null}
+        ListFooterComponent={actionError ? <Text style={s.errorText}>{actionError}</Text> : undefined}
         ListEmptyComponent={
           <View style={s.center}>
             <Ionicons name="notifications-off-outline" size={32} color={colors.textMuted} />
