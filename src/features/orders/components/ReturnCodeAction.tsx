@@ -12,7 +12,8 @@ export function ReturnCodeAction({
 
   return (
     <Button
-      title={mode === 'show' ? 'Show Return Code' : 'Confirm Return'}
+      // HTML 29/31 (Borrower): "Return Item". HTML 39 (Lender): "Confirm Return".
+      title={mode === 'show' ? 'Return Item' : 'Confirm Return'}
       onPress={() =>
         navigation.navigate('ReturnCode', {
           orderId: order.id,

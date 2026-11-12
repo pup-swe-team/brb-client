@@ -18,6 +18,7 @@ import { HandoverCodeAction } from '../components/HandoverCodeAction';
 import { RespondToRequestActions } from '../components/RespondToRequestActions';
 import { ReturnCodeAction } from '../components/ReturnCodeAction';
 import { ReviewAction } from '../../reviews/components/ReviewAction';
+import { OpenChatAction } from '../components/OpenChatAction';
 
 export default function OrderDetailScreen({ navigation, route }: any) {
   const { orderId, role: roleParam } = route.params as {
@@ -69,6 +70,13 @@ export default function OrderDetailScreen({ navigation, route }: any) {
   const showReturn = status === 'Active' || status === 'Overdue';
   const showCancel = status === 'Requested' || status === 'Confirmed';
   const showReview = status === 'Completed'; // CP-601 (Izzy)
+  // CP-202: Chat is offered while the order is in progress (HTML 24, 25, 29, 31, 37, 39, 64).
+  const showChat =
+    status === 'Requested' ||
+    status === 'Confirmed' ||
+    status === 'Active' ||
+    status === 'Overdue' ||
+    status === 'Disputed';
 
   return (
     <View style={s.root}>
@@ -123,6 +131,7 @@ export default function OrderDetailScreen({ navigation, route }: any) {
             {showRespond && <RespondToRequestActions {...slotProps} />}
             {showHandover && <HandoverCodeAction {...slotProps} />}
             {showReturn && <ReturnCodeAction {...slotProps} />}
+            {showChat && <OpenChatAction {...slotProps} />}
             {showCancel && <CancelOrderAction {...slotProps} />}
             {showReview && <ReviewAction {...slotProps} />}
           </>

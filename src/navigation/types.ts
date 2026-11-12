@@ -81,7 +81,7 @@ export type TabParamList = {
   Search: undefined;
   AddItem: undefined;
   Chat: undefined;
-  Profile: undefined;
+  Profile: { initialRole?: 'Borrower' | 'Lender' } | undefined;
 };
 
 export interface PublicUser {
