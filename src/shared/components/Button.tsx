@@ -6,13 +6,15 @@ type Props = { title: string; onPress?: () => void; variant?: 'primary' | 'secon
 
 const PRESSED_BG = {
   primary: colors.primaryDark,
-  destructive: colors.errorDark,
+  destructive: colors.primaryDark,
   secondary: colors.primarySoftPressed,
 };
 
 export function Button({ title, onPress, variant = 'primary', disabled, loading, compact }: Props) {
   const off = disabled || loading;
-  const bg = variant === 'primary' ? colors.primary : variant === 'destructive' ? colors.error : colors.white;
+  // Destructive uses the same deep red family as primary. The lighter colors.error looked washed out
+  // (like a disabled button) next to the other buttons.
+  const bg = variant === 'primary' || variant === 'destructive' ? colors.primary : colors.white;
   const fg = variant === 'secondary' ? colors.primary : colors.white;
   return (
     <Pressable onPress={onPress} disabled={off} accessibilityRole="button"

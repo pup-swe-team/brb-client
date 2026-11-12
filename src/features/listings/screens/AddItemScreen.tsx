@@ -8,6 +8,7 @@ import { extractApiError } from '../../../services/http';
 import { colors, spacing } from '../../../theme';
 import { useVerificationStatus } from '../../profile/hooks/useVerificationStatus';
 import { CATEGORIES, CONDITIONS, PICKUP_LOCATIONS, isValidDate, todayISO } from '../constants';
+import { DatePickerModal } from '../components/DatePickerModal';
 import { ManagedListing, createListing, updateListing } from '../services/listingsService';
 
 const RED = '#B2080C';
@@ -19,7 +20,7 @@ const WHITE = '#FFFFFF';
 const ERROR = '#F16C7A';
 
 type Photo = { uri: string; name: string; size?: number | null; mimeType?: string | null };
-type Errors = { photos?: string[]; title?: string; category?: string; pickup?: string; ownership?: string; price?: string; from?: string; until?: string };
+type Errors = { photos?: string[]; title?: string; category?: string; description?: string; pickup?: string; ownership?: string; price?: string; from?: string; until?: string };
 
 export default function AddItemScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
@@ -49,6 +50,7 @@ export default function AddItemScreen({ navigation, route }: any) {
   const [draftSaved, setDraftSaved] = useState(false);
   const [dropdown, setDropdown] = useState<'pickup' | null>(null);
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [datePicker, setDatePicker] = useState<'from' | 'until' | null>(null);
 
   const choosePhoto = async () => {
     if (photos.length >= 5) return Alert.alert('Photo limit reached', 'You can add up to 5 photos.');
@@ -77,6 +79,7 @@ export default function AddItemScreen({ navigation, route }: any) {
     if (!photos.length) next.photos = ['Add at least 1 photo.'];
     if (!title.trim()) next.title = 'Resource title is required.';
     if (!category) next.category = 'Choose a category.';
+    if (!description.trim()) next.description = 'Description is required.';
     if (lendingType === 'For Rent' && (!price.trim() || Number(price.replace(/[^0-9.]/g, '')) <= 0)) next.price = 'Enter a valid price per day.';
     if (availability === 'Available from') {
       const from = fromDate.trim();
@@ -216,15 +219,15 @@ export default function AddItemScreen({ navigation, route }: any) {
       {errorText(errors.category)}
 
       <Text style={s.label}>Course Code (Optional)</Text><TextInput value={courseCode} onChangeText={setCourseCode} placeholder="e.g. MATH 101" placeholderTextColor="#A5AFC1" style={s.input} autoCapitalize="characters"/>
-      <Text style={s.label}>Description</Text><TextInput value={description} onChangeText={v => setDescription(v.slice(0,300))} placeholder="Describe the item's condition and included accessories." placeholderTextColor="#A5AFC1" style={[s.input,s.description]} multiline textAlignVertical="top" maxLength={300}/><Text style={s.counter}>{description.length} / 300</Text>
+      <Text style={s.label}>Description <Text style={s.required}>*</Text></Text><TextInput value={description} onChangeText={v => {setDescription(v.slice(0,300)); setErrors(e => ({...e, description: undefined}));}} placeholder="Describe the item's condition and included accessories." placeholderTextColor="#A5AFC1" style={[s.input,s.description,showErrors && errors.description && s.inputError]} multiline textAlignVertical="top" maxLength={300}/><Text style={s.counter}>{description.length} / 300</Text>{errorText(errors.description)}
 
       <Text style={s.label}>Condition <Text style={s.required}>*</Text></Text><View style={s.chipRow}>{CONDITIONS.map(v => chip(v, condition === v, () => setCondition(v)))}</View>
       <Text style={s.label}>Lending Type <Text style={s.required}>*</Text></Text><View style={s.segmentRow}>{(['Free Lending','For Rent'] as const).map(v => <Pressable key={v} onPress={() => {setLendingType(v); if (v === 'Free Lending') {setPrice(''); setErrors(e => ({...e, price: undefined}));} else if (!price) setPrice('₱10');}} style={[s.segment, lendingType === v && s.segmentSelected]}><Text style={[s.segmentText,lendingType === v && s.segmentTextSelected]}>{v}</Text></Pressable>)}</View>
       {lendingType === 'For Rent' && <><Text style={s.label}>Price per day <Text style={s.required}>*</Text></Text><TextInput value={price} onChangeText={v => {setPrice(v); setErrors(e => ({...e, price: undefined}));}} placeholder="₱0" placeholderTextColor="#A5AFC1" style={[s.input,showErrors && errors.price && s.inputError]} keyboardType="decimal-pad"/>{errorText(errors.price)}</>}
 
-      <Text style={s.label}>Max Duration <Text style={s.required}>*</Text></Text><View style={s.select}><Text style={s.selectText}>{duration}</Text><Ionicons name="chevron-down" size={17} color={MUTED}/></View><View style={s.chipsWrap}>{['1 day','3 days','5 days','7 days','14 days'].map(v => chip(v,duration === v,() => setDuration(v)))}</View>
+      <Text style={s.label}>Max Duration <Text style={s.required}>*</Text></Text><View style={s.select}><Text style={s.selectText}>{duration}</Text></View><View style={s.chipsWrap}>{['1 day','3 days','5 days','7 days','14 days'].map(v => chip(v,duration === v,() => setDuration(v)))}</View>
       <Text style={s.label}>Availability <Text style={s.required}>*</Text></Text><View style={s.segmentRow}>{(['Available now','Available from'] as const).map(v => <Pressable key={v} onPress={() => setAvailability(v)} style={[s.segment,availability === v && s.segmentSelected]}><Text style={[s.segmentText,availability === v && s.segmentTextSelected]}>{v}</Text></Pressable>)}</View>
-      {availability === 'Available from' && <View style={s.dateRow}><View style={s.dateCol}><Text style={s.smallLabel}>From</Text><View style={[s.dateInput,showErrors && errors.from && s.inputError]}><Ionicons name="calendar-outline" size={16} color={MUTED}/><TextInput value={fromDate} onChangeText={v => {setFromDate(v); setErrors(e => ({...e,from:undefined}));}} style={s.dateText} placeholder="YYYY-MM-DD" placeholderTextColor="#A5AFC1" maxLength={10} autoCorrect={false} /></View>{errorText(errors.from)}</View><View style={s.dateCol}><Text style={s.smallLabel}>Until</Text><View style={[s.dateInput,showErrors && errors.until && s.inputError]}><Ionicons name="calendar-outline" size={16} color={MUTED}/><TextInput value={untilDate} onChangeText={v => {setUntilDate(v); setErrors(e => ({...e,until:undefined}));}} style={s.dateText} placeholder="YYYY-MM-DD" placeholderTextColor="#A5AFC1" maxLength={10} autoCorrect={false}/></View>{errorText(errors.until)}</View></View>}
+      {availability === 'Available from' && <View style={s.dateRow}><View style={s.dateCol}><Text style={s.smallLabel}>From</Text><Pressable onPress={() => setDatePicker('from')} style={[s.dateInput,showErrors && errors.from && s.inputError]} accessibilityRole="button" accessibilityLabel="Choose start date"><Ionicons name="calendar-outline" size={16} color={MUTED}/><Text style={[s.dateText,!fromDate && s.placeholder]}>{fromDate || 'YYYY-MM-DD'}</Text></Pressable>{errorText(errors.from)}</View><View style={s.dateCol}><Text style={s.smallLabel}>Until</Text><Pressable onPress={() => setDatePicker('until')} style={[s.dateInput,showErrors && errors.until && s.inputError]} accessibilityRole="button" accessibilityLabel="Choose end date"><Ionicons name="calendar-outline" size={16} color={MUTED}/><Text style={[s.dateText,!untilDate && s.placeholder]}>{untilDate || 'YYYY-MM-DD'}</Text></Pressable>{errorText(errors.until)}</View></View>}
 
       <Text style={s.label}>Pickup Location <Text style={s.required}>*</Text></Text>
       <Pressable onPress={() => setDropdown('pickup')} style={[s.select,showErrors && errors.pickup && s.inputError]}>
@@ -234,7 +237,7 @@ export default function AddItemScreen({ navigation, route }: any) {
       </Pressable>
       <Text style={s.helper}>Choose from locations set by BRB Admins.</Text>{errorText(errors.pickup)}
 
-      <Pressable onPress={() => {setOwnership(v => !v); setErrors(e => ({...e,ownership:undefined}));}} style={s.ownershipRow}><View style={[s.checkbox,ownership && s.checkboxChecked,showErrors && errors.ownership && s.checkboxError]}>{ownership && <Ionicons name="checkmark" size={15} color={WHITE}/>}</View><Text style={s.ownershipText}>I confirm that I own this item or have the right to lend it.</Text></Pressable>{errorText(errors.ownership)}
+      <Pressable onPress={() => {setOwnership(v => !v); setErrors(e => ({...e,ownership:undefined}));}} style={s.ownershipRow}><View style={[s.checkbox,ownership && s.checkboxChecked,showErrors && errors.ownership && s.checkboxError]}>{ownership && <Ionicons name="checkmark" size={15} color={WHITE}/>}</View><Text style={s.ownershipText}>I confirm that I own this item or have the right to lend it. <Text style={s.required}>*</Text></Text></Pressable>{errorText(errors.ownership)}
       <Pressable style={[s.postButton, saving && { opacity: 0.6 }]} onPress={postItem} disabled={saving}><Text style={s.postText}>{saving ? 'Saving…' : editing ? 'Save Changes' : 'Post Item'}</Text></Pressable>{!editing && <Pressable style={s.draftButton} onPress={saveDraft}><Text style={s.draftText}>{draftSaved ? 'Save Draft ✓' : 'Save Draft'}</Text></Pressable>}
     </ScrollView>
 
@@ -280,6 +283,32 @@ export default function AddItemScreen({ navigation, route }: any) {
         </Pressable>
       </Pressable>
     </Modal>
+
+    <DatePickerModal
+      visible={datePicker === 'from'}
+      title="Available from"
+      value={fromDate}
+      minDate={editing ? undefined : todayISO()}
+      onClose={() => setDatePicker(null)}
+      onSelect={(date) => {
+        setFromDate(date);
+        if (untilDate && untilDate < date) setUntilDate('');
+        setErrors(e => ({ ...e, from: undefined }));
+        setDatePicker(null);
+      }}
+    />
+    <DatePickerModal
+      visible={datePicker === 'until'}
+      title="Available until"
+      value={untilDate}
+      minDate={fromDate && isValidDate(fromDate) ? fromDate : (editing ? undefined : todayISO())}
+      onClose={() => setDatePicker(null)}
+      onSelect={(date) => {
+        setUntilDate(date);
+        setErrors(e => ({ ...e, until: undefined }));
+        setDatePicker(null);
+      }}
+    />
   </View>;
 }
 

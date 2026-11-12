@@ -25,7 +25,14 @@ import { PublicLenderProfile, getLenderProfile } from '../../profile/services/le
 import { AvailabilityCalendar } from '../components/AvailabilityCalendar';
 import { BorrowRequestError, createBorrowRequest } from '../../orders/services/ordersService';
 import { ReportButton } from '../../reports/components/ReportButton';
-import { http } from '../../../services/http';
+import { http, USE_MOCK } from '../../../services/http';
+import { getCurrentUser } from '../../auth/services/authService';
+import { addDaysISO, formatDurationDays, parseDurationDays } from '../constants';
+
+// Only one overlay is ever shown at a time. iOS cannot present a second <Modal> while another is
+// still on screen, so request / confirm / error / success all live inside ONE <Modal> and we just
+// switch which card it shows.
+type Overlay = 'none' | 'verify' | 'request' | 'confirm' | 'error' | 'success';
 type ReservedDateRange = {
   startDate: string;
   endDate: string;
@@ -34,6 +41,8 @@ type CalendarPickerProps = {
   visible: boolean;
   selectedDate: string;
   minDate?: string;
+  maxDate?: string;
+  hint?: string;
   availableFrom?: string;
   availableTo?: string;
   reservedRanges?: ReservedDateRange[];
@@ -48,6 +57,12 @@ function formatDisplayDate(iso: string): string {
     day: 'numeric',
     year: 'numeric',
   });
+}
+// Number of days from start to end, counting both days (Nov 1 to Nov 3 = 3 days).
+function inclusiveDays(start: string, end: string): number {
+  const [ys, ms, ds] = start.split('-').map(Number);
+  const [ye, me, de] = end.split('-').map(Number);
+  return Math.round((Date.UTC(ye, me - 1, de) - Date.UTC(ys, ms - 1, ds)) / 86400000) + 1;
 }
 export default function ItemDetailScreen({ navigation, route }: any) {
   const item = route?.params?.item ?? {};
@@ -106,6 +121,25 @@ export default function ItemDetailScreen({ navigation, route }: any) {
       endDate: String(range?.end_date ?? range?.endDate ?? ''),
     }))
     .filter((range: ReservedDateRange) => range.startDate && range.endDate);
+  // Lender's max rental length (days), set on the Create Listing form. Missing = no limit.
+  const maxDurationDays = parseDurationDays(
+    detailData?.max_duration_days ?? detailData?.max_duration ?? item.maxDurationDays ?? item.duration,
+  );
+  // Latest return date allowed for a given check-out date: capped by the lender's max duration and
+  // by the next reservation, so a rental can never run across someone else's dates.
+  const latestReturnFor = (start: string): string | undefined => {
+    let limit: string | undefined;
+    if (maxDurationDays) limit = addDaysISO(start, maxDurationDays - 1);
+    const nextReserved = reservedRanges
+      .map((range) => range.startDate)
+      .filter((date) => date > start)
+      .sort()[0];
+    if (nextReserved) {
+      const dayBefore = addDaysISO(nextReserved, -1);
+      if (!limit || dayBefore < limit) limit = dayBefore;
+    }
+    return limit;
+  };
   const lenderId: string | undefined = (detailData?.lender?.id != null ? String(detailData.lender.id) : undefined) || item.lenderId;
   const displayDescription = detailData?.description || item.description;
   // Identity status decides whether the person may send a request.
@@ -147,30 +181,55 @@ const barWidth = (stars: number): `${number}%` =>
     'checkout',
   );
   const [calendarVisible, setCalendarVisible] = useState(false);
-  const [requestVisible, setRequestVisible] = useState(false);
-  const [verifyPromptVisible, setVerifyPromptVisible] = useState(false);
-  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [overlay, setOverlay] = useState<Overlay>('none');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalTitle, setErrorModalTitle] = useState('Request failed');
   const [errorModalMessage, setErrorModalMessage] = useState('');
+  // Which overlay the error's OK button goes back to ('none' = just close).
+  const [errorReturnTo, setErrorReturnTo] = useState<Overlay>('none');
 
-  const showRequestError = (title: string, message: string) => {
+  const showRequestError = (title: string, message: string, returnTo: Overlay = 'none') => {
+    setErrorReturnTo(returnTo);
     setErrorModalTitle(title);
     setErrorModalMessage(message);
-    setErrorModalVisible(true);
+    // Replaces whatever overlay is open (request / confirm) instead of stacking a second Modal.
+    setOverlay('error');
   };
+  // Used to stop a lender from requesting their own listing before any overlay opens.
+  useEffect(() => {
+    if (USE_MOCK) return;
+    let active = true;
+    getCurrentUser()
+      .then((user) => active && setCurrentUserId(String(user.id)))
+      .catch(() => {
+        // Not fatal: the server still rejects own-listing requests (code: own_listing).
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   const [bookmarked, setBookmarked] = useState(false);
   const openCalendar = (target: 'checkout' | 'return') => {
+    if (target === 'return' && !checkout) {
+      showRequestError(
+        'Choose a check-out date first',
+        'Pick your check-out date before choosing a return date, so we can show how long you can keep the item.',
+      );
+      return;
+    }
     setCalendarTarget(target);
     setCalendarVisible(true);
   };
   const selectDate = (date: string) => {
     if (calendarTarget === 'checkout') {
       setCheckout(date);
-      if (returnDate && returnDate < date) {
+      // Drop the return date if it no longer fits (before the new start, past the max duration,
+      // or across another reservation).
+      const latest = latestReturnFor(date);
+      if (returnDate && (returnDate < date || (latest && returnDate > latest))) {
         setReturnDate('');
       }
     } else {
@@ -185,16 +244,23 @@ const barWidth = (stars: number): `${number}%` =>
       showRequestError('Listing unavailable', 'This listing is not available right now.');
       return;
     }
+    if (currentUserId && lenderId && currentUserId === lenderId) {
+      showRequestError(
+        'Cannot borrow your own listing',
+        'You cannot send a borrow request for an item that you listed yourself.',
+      );
+      return;
+    }
     // Only verified users can send a request.
     if (verificationStatus !== 'Verified') {
-      setVerifyPromptVisible(true);
+      setOverlay('verify');
       return;
     }
     if (!checkout || !returnDate) {
-      Alert.alert('Choose your dates', 'Pick a check-out and return date before sending a request.');
+      showRequestError('Choose your dates', 'Pick a check-out and return date before sending a request.');
       return;
     }
-    setRequestVisible(true);
+    setOverlay('request');
   };
   const verifyCopy =
     verificationStatus === 'Pending'
@@ -204,7 +270,7 @@ const barWidth = (stars: number): `${number}%` =>
         : { title: 'Verify your identity first', message: 'You need a verified account to request items. It only takes a few minutes.', action: 'Verify Now' };
   const confirmRequest = async () => {
     if (!checkout || !returnDate) {
-      Alert.alert('Choose your dates', 'Please select a start date and return date.');
+      showRequestError('Choose your dates', 'Please select a start date and return date.');
       return;
     }
     if (returnDate < checkout) {
@@ -221,13 +287,20 @@ const barWidth = (stars: number): `${number}%` =>
       );
       return;
     }
+    if (maxDurationDays && inclusiveDays(checkout, returnDate) > maxDurationDays) {
+      showRequestError(
+        'Maximum rental period exceeded',
+        `The lender allows up to ${formatDurationDays(maxDurationDays)} per rental. Please choose a shorter date range.`,
+      );
+      return;
+    }
     if (!isFree && !paymentMethod.trim()) {
-      Alert.alert('Required field', 'Please enter a payment method.');
+      showRequestError('Required field', 'Please enter a payment method.', 'request');
       return;
     }
     const listingId = item.id ?? item.listingId;
     if (listingId === undefined || listingId === null || String(listingId).trim() === '') {
-      Alert.alert(
+      showRequestError(
         'Unable to submit',
         'This listing is missing its ID. Please check the listing data before submitting the request.',
       );
@@ -245,15 +318,10 @@ const barWidth = (stars: number): `${number}%` =>
         endDate: returnDate,
         message: requestMessage || undefined,
       });
-      setConfirmVisible(false);
-      setRequestVisible(false);
       setMessage('');
       setPaymentMethod('');
-      Alert.alert(
-        'Request sent',
-        `Your ${isFree ? 'borrow' : 'rental'} request has been submitted.`,
-        [{ text: 'OK', onPress: () => navigation.goBack() }],
-      );
+      // Success card inside the same Modal (an Alert fired while a Modal is closing is dropped on iOS).
+      setOverlay('success');
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Please try again.';
@@ -261,8 +329,6 @@ const barWidth = (stars: number): `${number}%` =>
       // Branch on the backend's machine-readable `code` (POST /orders/ -> 400).
       switch (error instanceof BorrowRequestError ? error.code : 'unknown') {
         case 'borrowing_limit_reached':
-          setConfirmVisible(false);
-          setRequestVisible(false);
           showRequestError(
             'Borrowing limit reached',
             'You can only have 3 active or pending borrow requests at the same time. Please complete, return or cancel one before requesting another item.',
@@ -270,8 +336,6 @@ const barWidth = (stars: number): `${number}%` =>
           break;
         case 'date_conflict': {
           const range = error instanceof BorrowRequestError ? error.conflictingRange : undefined;
-          setConfirmVisible(false);
-          setRequestVisible(false);
           showRequestError(
             'Dates unavailable',
             range
@@ -300,6 +364,19 @@ const barWidth = (stars: number): `${number}%` =>
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+  // Android back button / OK button for whichever overlay is showing.
+  const closeOverlayWithBack = () => {
+    if (overlay === 'confirm') {
+      if (!submitting) setOverlay('request');
+    } else if (overlay === 'error') {
+      setOverlay(errorReturnTo);
+    } else if (overlay === 'success') {
+      setOverlay('none');
+      navigation.goBack();
+    } else {
+      setOverlay('none');
     }
   };
   return (
@@ -525,59 +602,17 @@ const barWidth = (stars: number): `${number}%` =>
           </Text>
         </Pressable>
       </View>
-      <Modal
-        visible={verifyPromptVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setVerifyPromptVisible(false)}
-      >
-        <View style={styles.confirmBackdrop}>
-          <BlurView
-            intensity={32}
-            tint="dark"
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.confirmModal}>
-            <View style={{ alignItems: 'center', marginBottom: 12 }}>
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={38}
-                color={colors.primary}
-              />
-            </View>
-            <Text style={styles.confirmTitle}>{verifyCopy.title}</Text>
-            <Text style={styles.confirmMessage}>{verifyCopy.message}</Text>
-            <View style={styles.confirmActions}>
-              <Pressable
-                style={styles.confirmCancel}
-                onPress={() => setVerifyPromptVisible(false)}
-              >
-                <Text style={styles.confirmCancelText}>
-                  {verifyCopy.action ? 'Not Now' : 'OK'}
-                </Text>
-              </Pressable>
-              {verifyCopy.action ? (
-                <Pressable
-                  style={styles.confirmButton}
-                  onPress={() => {
-                    setVerifyPromptVisible(false);
-                    navigation.navigate('VerifyIdentity');
-                  }}
-                >
-                  <Text style={styles.confirmButtonText}>
-                    {verifyCopy.action}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-          </View>
-        </View>
-      </Modal>
       {calendarVisible ? (
         <CalendarPicker
           visible
           selectedDate={calendarTarget === 'checkout' ? checkout : returnDate}
           minDate={calendarTarget === 'return' ? checkout || undefined : undefined}
+          maxDate={calendarTarget === 'return' && checkout ? latestReturnFor(checkout) : undefined}
+          hint={
+            calendarTarget === 'return' && maxDurationDays
+              ? `This lender allows up to ${formatDurationDays(maxDurationDays)} per rental.`
+              : undefined
+          }
           availableFrom={availableFrom}
           availableTo={availableTo}
           reservedRanges={reservedRanges}
@@ -586,185 +621,219 @@ const barWidth = (stars: number): `${number}%` =>
         />
       ) : null}
       <Modal
-        visible={requestVisible}
+        visible={overlay !== 'none'}
         transparent
         animationType="fade"
-        onRequestClose={() => setRequestVisible(false)}
+        onRequestClose={closeOverlayWithBack}
       >
-        <KeyboardAvoidingView
-          style={styles.modalBackdrop}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <BlurView
-            intensity={38}
-            tint="dark"
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.requestModal}>
-            <LinearGradient
-              colors={[
-                'rgba(224, 185, 79, 0.78)',
-                'rgba(151, 112, 82, 0.82)',
-                'rgba(116, 70, 75, 0.86)',
-              ]}
-              locations={[0, 0.52, 1]}
+        {overlay === 'request' ? (
+          <KeyboardAvoidingView
+            style={styles.modalBackdrop}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <BlurView
+              intensity={38}
+              tint="dark"
               style={StyleSheet.absoluteFill}
             />
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-            <View style={styles.modalHeading}>
-              <Text style={styles.modalTitle}>
-                {isFree ? 'Request to Borrow' : 'Request to Rent'}
-              </Text>
-            </View>
-            <View style={styles.requestItem}>
-              <View style={styles.requestItemIcon}>
-                <Ionicons
-                  name="book-outline"
-                  size={22}
-                  color={colors.primary}
-                />
-              </View>
-              <View style={styles.requestItemInfo}>
-                <Text style={styles.requestItemTitle} numberOfLines={2}>
-                  {title}
-                </Text>
-                <Text style={styles.requestItemSubtitle}>
-                  Lender: {lender?.fullName || item.lenderName || 'Lender'}
-                </Text>
-                <Text style={styles.requestItemSubtitle}>
-                  {formatDisplayDate(checkout)} to {formatDisplayDate(returnDate)}
-                </Text>
-              </View>
-            </View>
-            {!isFree && (
-              <>
-                <Text style={styles.inputLabel}>Payment Method</Text>
-                <TextInput
-                  style={styles.paymentInput}
-                  value={paymentMethod}
-                  onChangeText={setPaymentMethod}
-                  placeholder="Enter preferred payment method"
-                  placeholderTextColor={colors.textMuted}
-                  accessibilityLabel="Payment method"
-                />
-              </>
-            )}
-            <Text style={styles.inputLabel}>Add a message (Optional)</Text>
-            <TextInput
-              style={styles.messageInput}
-              value={message}
-              onChangeText={setMessage}
-              placeholder="Introduce yourself or explain why you need it..."
-              placeholderTextColor={colors.textMuted}
-              multiline
-              textAlignVertical="top"
-              maxLength={500}
-              accessibilityLabel="Optional message to lender"
-            />
-            <View style={styles.modalActions}>
-              <Pressable
-                style={styles.cancelButton}
-                onPress={() => setRequestVisible(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={styles.sendButton}
-                onPress={() => {
-                  setRequestVisible(false);
-                  setConfirmVisible(true);
-                }}
-              >
-                <Text style={styles.sendButtonText}>Send Request</Text>
-              </Pressable>
-            </View>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-      <Modal
-        visible={errorModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setErrorModalVisible(false)}
-      >
-        <View style={styles.confirmBackdrop}>
-          <BlurView
-            intensity={32}
-            tint="dark"
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.confirmModal}>
-            <View style={{ alignItems: 'center', marginBottom: 12 }}>
-              <Ionicons
-                name="alert-circle-outline"
-                size={38}
-                color={colors.primary}
+            <View style={styles.requestModal}>
+              <LinearGradient
+                colors={[
+                  'rgba(224, 185, 79, 0.78)',
+                  'rgba(151, 112, 82, 0.82)',
+                  'rgba(116, 70, 75, 0.86)',
+                ]}
+                locations={[0, 0.52, 1]}
+                style={StyleSheet.absoluteFill}
               />
-            </View>
-            <Text style={styles.confirmTitle}>{errorModalTitle}</Text>
-            <Text style={styles.confirmMessage}>{errorModalMessage}</Text>
-            <View style={styles.confirmActions}>
-              <Pressable
-                style={styles.confirmButton}
-                onPress={() => setErrorModalVisible(false)}
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
               >
-                <Text style={styles.confirmButtonText}>OK</Text>
-              </Pressable>
+                <View style={styles.modalHeading}>
+                  <Text style={styles.modalTitle}>
+                    {isFree ? 'Request to Borrow' : 'Request to Rent'}
+                  </Text>
+                </View>
+                <View style={styles.requestItem}>
+                  <View style={styles.requestItemIcon}>
+                    <Ionicons
+                      name="book-outline"
+                      size={22}
+                      color={colors.primary}
+                    />
+                  </View>
+                  <View style={styles.requestItemInfo}>
+                    <Text style={styles.requestItemTitle} numberOfLines={2}>
+                      {title}
+                    </Text>
+                    <Text style={styles.requestItemSubtitle}>
+                      Lender: {lender?.fullName || item.lenderName || 'Lender'}
+                    </Text>
+                    <Text style={styles.requestItemSubtitle}>
+                      {formatDisplayDate(checkout)} to {formatDisplayDate(returnDate)}
+                    </Text>
+                  </View>
+                </View>
+                {!isFree && (
+                  <>
+                    <Text style={styles.inputLabel}>Payment Method</Text>
+                    <TextInput
+                      style={styles.paymentInput}
+                      value={paymentMethod}
+                      onChangeText={setPaymentMethod}
+                      placeholder="Enter preferred payment method"
+                      placeholderTextColor={colors.textMuted}
+                      accessibilityLabel="Payment method"
+                    />
+                  </>
+                )}
+                <Text style={styles.inputLabel}>Add a message (Optional)</Text>
+                <TextInput
+                  style={styles.messageInput}
+                  value={message}
+                  onChangeText={setMessage}
+                  placeholder="Introduce yourself or explain why you need it..."
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  textAlignVertical="top"
+                  maxLength={500}
+                  accessibilityLabel="Optional message to lender"
+                />
+                <View style={styles.modalActions}>
+                  <Pressable
+                    style={styles.cancelButton}
+                    onPress={() => setOverlay('none')}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.sendButton}
+                    onPress={() => setOverlay('confirm')}
+                  >
+                    <Text style={styles.sendButtonText}>Send Request</Text>
+                  </Pressable>
+                </View>
+              </ScrollView>
             </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={confirmVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setConfirmVisible(false)}
-      >
-        <View style={styles.confirmBackdrop}>
-          <BlurView
-            intensity={32}
-            tint="dark"
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.confirmModal}>
-            <LinearGradient
-              colors={[
-                'rgba(238, 224, 210, 0.82)',
-                'rgba(201, 165, 130, 0.84)',
-              ]}
+          </KeyboardAvoidingView>
+        ) : (
+          <View
+            style={[
+              styles.confirmBackdrop,
+              overlay !== 'verify' && styles.confirmBackdropSolid,
+            ]}
+          >
+            <BlurView
+              intensity={32}
+              tint="dark"
               style={StyleSheet.absoluteFill}
             />
-            <Text style={styles.confirmTitle}>Send Request</Text>
-            <Text style={styles.confirmMessage}>
-              Are you sure you want to make this request?
-            </Text>
-            <View style={styles.confirmActions}>
-              <Pressable
-                style={styles.confirmCancel}
-                onPress={() => {
-                  setConfirmVisible(false);
-                  setRequestVisible(true);
-                }}
-              >
-                <Text style={styles.confirmCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.confirmButton, submitting && { opacity: 0.6 }]}
-                onPress={confirmRequest}
-                disabled={submitting}
-              >
-                <Text style={styles.confirmButtonText}>
-                  {submitting ? 'Sending...' : 'Confirm'}
+            {overlay === 'verify' ? (
+              <View style={styles.confirmModal}>
+                <View style={{ alignItems: 'center', marginBottom: 12 }}>
+                  <Ionicons
+                    name="shield-checkmark-outline"
+                    size={38}
+                    color={colors.primary}
+                  />
+                </View>
+                <Text style={styles.confirmTitle}>{verifyCopy.title}</Text>
+                <Text style={styles.confirmMessage}>{verifyCopy.message}</Text>
+                <View style={styles.confirmActions}>
+                  <Pressable
+                    style={styles.confirmCancel}
+                    onPress={() => setOverlay('none')}
+                  >
+                    <Text style={styles.confirmCancelText}>
+                      {verifyCopy.action ? 'Not Now' : 'OK'}
+                    </Text>
+                  </Pressable>
+                  {verifyCopy.action ? (
+                    <Pressable
+                      style={styles.confirmButton}
+                      onPress={() => {
+                        setOverlay('none');
+                        navigation.navigate('VerifyIdentity');
+                      }}
+                    >
+                      <Text style={styles.confirmButtonText}>
+                        {verifyCopy.action}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
+            ) : overlay === 'confirm' ? (
+              <View style={[styles.confirmModal, styles.confirmModalSolid]}>
+                <Text style={styles.confirmTitle}>Send Request</Text>
+                <Text style={styles.confirmMessage}>
+                  Are you sure you want to make this request?
                 </Text>
-              </Pressable>
-            </View>
+                <View style={styles.confirmActions}>
+                  <Pressable
+                    style={styles.confirmCancel}
+                    onPress={() => setOverlay('request')}
+                    disabled={submitting}
+                  >
+                    <Text style={styles.confirmCancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.confirmButton, submitting && { opacity: 0.6 }]}
+                    onPress={confirmRequest}
+                    disabled={submitting}
+                  >
+                    <Text style={styles.confirmButtonText}>
+                      {submitting ? 'Sending...' : 'Confirm'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : overlay === 'success' ? (
+              <View style={[styles.confirmModal, styles.confirmModalSolid]}>
+                <View style={{ alignItems: 'center', marginBottom: 12 }}>
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={38}
+                    color={colors.success}
+                  />
+                </View>
+                <Text style={styles.confirmTitle}>Request sent</Text>
+                <Text style={styles.confirmMessage}>
+                  {`Your ${isFree ? 'borrow' : 'rental'} request has been submitted.`}
+                </Text>
+                <View style={styles.confirmActions}>
+                  <Pressable
+                    style={styles.confirmButton}
+                    onPress={closeOverlayWithBack}
+                  >
+                    <Text style={styles.confirmButtonText}>OK</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : (
+              <View style={[styles.confirmModal, styles.confirmModalSolid]}>
+                <View style={{ alignItems: 'center', marginBottom: 12 }}>
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={38}
+                    color={colors.primary}
+                  />
+                </View>
+                <Text style={styles.confirmTitle}>{errorModalTitle}</Text>
+                <Text style={styles.confirmMessage}>{errorModalMessage}</Text>
+                <View style={styles.confirmActions}>
+                  <Pressable
+                    style={styles.confirmButton}
+                    onPress={closeOverlayWithBack}
+                  >
+                    <Text style={styles.confirmButtonText}>OK</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
           </View>
-        </View>
+        )}
       </Modal>
     </View>
   );
@@ -773,6 +842,8 @@ function CalendarPicker({
   visible,
   selectedDate,
   minDate,
+  maxDate,
+  hint,
   availableFrom,
   availableTo,
   reservedRanges = [],
@@ -780,8 +851,10 @@ function CalendarPicker({
   onSelect,
 }: CalendarPickerProps) {
   const [month, setMonth] = useState(() => {
-    if (selectedDate) {
-      const [year, monthNumber] = selectedDate.split('-').map(Number);
+    // Open on the chosen date, or (for the return date) on the check-out month.
+    const anchor = selectedDate || minDate;
+    if (anchor) {
+      const [year, monthNumber] = anchor.split('-').map(Number);
       return new Date(year, monthNumber - 1, 1);
     }
     const now = new Date();
@@ -806,6 +879,7 @@ function CalendarPicker({
     return (
       parsed < today ||
       (!!minDate && date < minDate) ||
+      (!!maxDate && date > maxDate) ||
       (!!availableFrom && date < availableFrom) ||
       (!!availableTo && date > availableTo) ||
       reservedRanges.some(
@@ -857,6 +931,7 @@ function CalendarPicker({
           <Text style={styles.calendarPreview}>
             {draftDate ? formatDisplayDate(draftDate) : 'Choose a date'}
           </Text>
+          {hint ? <Text style={styles.calendarHint}>{hint}</Text> : null}
           <View style={styles.monthHeader}>
             <Pressable
               onPress={() => setMonth(new Date(year, monthIndex - 1, 1))}
@@ -1497,6 +1572,13 @@ calendarCloseButton: {
   calendarDaySelected: {
     backgroundColor: '#EBA62F',
   },
+  calendarHint: {
+    fontSize: 11,
+    color: colors.primaryDark,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
   calendarDayDisabled: {
     opacity: 0.3,
   },
@@ -1663,6 +1745,15 @@ calendarCloseButton: {
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
+  },
+  // Overlays that replace the request form (confirm / error / success) sit on a darker backdrop
+  // and a solid card so the text stays readable.
+  confirmBackdropSolid: {
+    backgroundColor: 'rgba(20, 16, 24, 0.78)',
+  },
+  confirmModalSolid: {
+    backgroundColor: '#FBF4EC',
+    borderColor: 'rgba(255, 255, 255, 0.9)',
   },
   confirmModal: {
     width: '100%',

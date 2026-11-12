@@ -34,3 +34,21 @@ export function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+
+// "5 days" -> 5. Returns undefined when the text has no number (= no limit).
+export function parseDurationDays(value?: string | number | null): number | undefined {
+  if (value == null) return undefined;
+  const n = typeof value === 'number' ? value : parseInt(String(value).replace(/[^0-9]/g, ''), 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+export function formatDurationDays(days: number) {
+  return `${days} ${days === 1 ? 'day' : 'days'}`;
+}
+
+// Adds (or subtracts) whole days to a YYYY-MM-DD string without timezone drift.
+export function addDaysISO(iso: string, days: number) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(y, m - 1, d + days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}

@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   Button,
@@ -31,6 +32,7 @@ import { formatLockoutTime, useCodeLockout } from '../hooks/useCodeLockout';
 type Mode = 'show' | 'enter';
 
 export default function ReturnCodeScreen({ navigation, route }: any) {
+  const insets = useSafeAreaInsets();
   const { orderId, mode } = route.params as { orderId: string; mode: Mode };
   // Borrower displays the code; lender enters it.
   const orderRole: OrderRole = mode === 'show' ? 'Borrower' : 'Lender';
@@ -185,7 +187,8 @@ export default function ReturnCodeScreen({ navigation, route }: any) {
     <View style={styles.root}>
       <TopBar title="Return Code" onBack={leaveScreen} />
       <View style={styles.body}>
-        <ScreenContainer scroll>
+        {/* The footer below owns the bottom safe-area, so the scroll area must not add its own. */}
+        <ScreenContainer scroll edges={[]}>
           {loading ? (
             <ActivityIndicator color={colors.primary} style={styles.loader} />
           ) : !order ? (
@@ -291,7 +294,7 @@ export default function ReturnCodeScreen({ navigation, route }: any) {
         </ScreenContainer>
       </View>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.md }]}>
         {mode === 'show' ? (
           <>
             <Button
@@ -366,7 +369,7 @@ const styles = StyleSheet.create({
   lockedBox: { borderWidth: 1, borderColor: colors.error, borderRadius: 10, backgroundColor: colors.white, padding: spacing.md, alignItems: 'center', gap: spacing.xs },
   lockedTitle: { ...text.body, color: colors.error, fontWeight: '700' },
   lockedText: { ...text.caption, color: colors.textSecondary, textAlign: 'center' },
-  footer: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xl, gap: spacing.sm, backgroundColor: colors.white },
+  footer: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.sm, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
   successCard: { width: '100%', maxWidth: 360, backgroundColor: colors.white, borderRadius: 14, padding: spacing.lg, gap: spacing.md },
   successTitle: { ...text.h2, textAlign: 'center' },

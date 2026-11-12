@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { http, USE_MOCK } from '../../../services/http';
+import { formatDurationDays, parseDurationDays } from '../constants';
 
 export type ManagedListing = {
   id: string;
@@ -90,7 +91,8 @@ function mapBackendToManaged(item: any): ManagedListing {
     condition: item.condition ?? 'Good',
     lendingType: isRent ? 'For Rent' : 'Free Lending',
     price,
-    duration: '5 days',
+    // Lender's max rental length. Falls back to the old default if the API does not send it yet.
+    duration: formatDurationDays(parseDurationDays(item.max_duration_days ?? item.max_duration) ?? 5),
     availability: hasWindow ? 'Available from' : 'Available now',
     fromDate,
     untilDate,
@@ -132,6 +134,8 @@ async function buildListingData(input: ListingInput, isCreate = false): Promise<
       pickup_location: input.pickup,
       rate_per_day: input.lendingType === 'For Rent' ? input.price.replace(/[^\d.]/g, '') || null : null,
     };
+    const maxDays = parseDurationDays(input.duration);
+    if (maxDays) payload.max_duration_days = maxDays;
     if (isCreate) {
       payload.is_ownership_confirmed = true;
     }
@@ -152,6 +156,8 @@ async function buildListingData(input: ListingInput, isCreate = false): Promise<
   form.append('condition', input.condition);
   form.append('category', input.category);
   form.append('pickup_location', input.pickup);
+  const maxDays = parseDurationDays(input.duration);
+  if (maxDays) form.append('max_duration_days', String(maxDays));
   if (input.lendingType === 'For Rent') {
     const p = input.price.replace(/[^\d.]/g, '');
     if (p) form.append('rate_per_day', p);
