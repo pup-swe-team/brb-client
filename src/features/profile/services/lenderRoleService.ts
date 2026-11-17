@@ -1,5 +1,5 @@
 import { extractApiError, http, USE_MOCK } from '../../../services/http';
-import { getMyOrders } from '../../orders/services/ordersService';
+import { getMyOrders, mockDeclineRequestedLendOrders } from '../../orders/services/ordersService';
 
 // CP-1003 Apply for Lender role from profile. Mock first, real call behind the same signature.
 
@@ -63,6 +63,18 @@ export class RevokeBlockedError extends Error {
 const BLOCKING_LEND_STATUSES = ['Confirmed', 'Active', 'Overdue'];
 
 export async function revokeLenderRole(): Promise<void> {
+  // Pre-check for blocking orders so both platforms trigger deterministic warning modal
+  try {
+    const lends = await getMyOrders('Lender');
+    if (lends.some((order) => BLOCKING_LEND_STATUSES.includes(order.status))) {
+      throw new RevokeBlockedError();
+    }
+  } catch (err) {
+    if (err instanceof RevokeBlockedError || (err as any)?.name === 'RevokeBlockedError') {
+      throw err;
+    }
+  }
+
   if (USE_MOCK) {
     await wait(MOCK_DELAY_MS);
     if (process.env.EXPO_PUBLIC_MOCK_NO_BLOCKERS !== 'true') {
@@ -71,6 +83,7 @@ export async function revokeLenderRole(): Promise<void> {
         throw new RevokeBlockedError();
       }
     }
+    mockDeclineRequestedLendOrders();
     mockIsLender = false;
     return;
   }
@@ -78,8 +91,22 @@ export async function revokeLenderRole(): Promise<void> {
     await http.post('/auth/revoke-lender/');
   } catch (error: any) {
     const data = error?.response?.data;
-    const code = typeof data?.code === 'string' ? data.code : '';
-    if (error?.response?.status === 409 || code === 'has_active_orders' || code === 'has_unsettled_orders') {
+    const code = typeof data?.code === 'string' ? data.code.toLowerCase() : '';
+    const detail = typeof data?.detail === 'string' ? data.detail.toLowerCase() : '';
+    const message = extractApiError(error).toLowerCase();
+
+    if (
+      error?.response?.status === 409 ||
+      code.includes('active') ||
+      code.includes('order') ||
+      code.includes('unsettled') ||
+      detail.includes('active') ||
+      detail.includes('order') ||
+      detail.includes('confirmed') ||
+      message.includes('order') ||
+      message.includes('active') ||
+      message.includes('confirmed')
+    ) {
       throw new RevokeBlockedError();
     }
     throw new Error(extractApiError(error));

@@ -54,7 +54,7 @@ export function RecentNotificationsPanel({ navigation }: { navigation: any }) {
   return (
     <View style={s.section}>
       <View style={s.headerRow}>
-        <Text style={s.title}>Notification</Text>
+        <Text style={s.title}>Notifications</Text>
         {items.length > 0 ? (
           <Pressable onPress={() => navigation.navigate('Notifications')} hitSlop={8} accessibilityRole="button">
             <Text style={s.seeAll}>See all</Text>

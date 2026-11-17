@@ -56,6 +56,19 @@ function mapBackendListing(item: any): Listing {
     .filter((uri: any): uri is string => Boolean(uri));
   const firstPhoto = photoList.length > 0 ? photoList[0] : undefined;
 
+  const rating =
+    item.lender?.rating != null
+      ? Number(item.lender.rating)
+      : item.rating != null
+      ? Number(item.rating)
+      : 0;
+  const reviewCount =
+    item.lender?.review_count != null
+      ? Number(item.lender.review_count)
+      : item.review_count != null
+      ? Number(item.review_count)
+      : 0;
+
   return {
     id: String(item.id),
     title: item.title,
@@ -68,8 +81,8 @@ function mapBackendListing(item: any): Listing {
     photos: photoList,
     imageUrl: firstPhoto,
     description: item.description || '',
-    rating: 4.8,
-    reviewCount: 5,
+    rating,
+    reviewCount,
     availableFrom: item.available_from ?? '',
     availableTo: item.available_to ?? '',
     createdAt: (item.created_at ?? '').slice(0, 10),
@@ -94,11 +107,19 @@ export async function searchListings(p: SearchParams): Promise<SearchResult> {
 
   const { data } = await http.get('/listings/', { params });
   const rawList: any[] = Array.isArray(data) ? data : (data.results ?? []);
-  const count: number = Array.isArray(data) ? rawList.length : (data.count ?? rawList.length);
+  // Exclude unreturned or inactive listings from search
+  const filteredList = rawList.filter((item: any) => {
+    const status = (typeof item.status === 'string' ? item.status : item.status?.name || '').toLowerCase();
+    if (status === 'unreturned' || status === 'inactive' || item.has_unreturned_order === true) {
+      return false;
+    }
+    return true;
+  });
+  const count: number = Array.isArray(data) ? filteredList.length : (data.count ?? filteredList.length);
   const totalPages = Math.max(1, Math.ceil(count / p.pageSize));
 
   return {
-    items: rawList.map(mapBackendListing),
+    items: filteredList.map(mapBackendListing),
     page: p.page,
     totalPages,
     total: count,

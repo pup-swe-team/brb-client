@@ -76,8 +76,24 @@ export function AdminCaseScreen({ navigation, route }: any) {
   }, [caseId]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let active = true;
+    getAdminCase(caseId)
+      .then((res) => {
+        if (active) {
+          setData(res);
+          setLoading(false);
+        }
+      })
+      .catch((e) => {
+        if (active) {
+          setError(extractApiError(e));
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [caseId]);
 
   const openMode = (m: Mode) => {
     setMode(m);

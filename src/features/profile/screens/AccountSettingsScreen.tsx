@@ -60,8 +60,12 @@ export default function AccountSettingsScreen({ navigation }: any) {
       setRevokeOpen(false);
       setIsLender(false);
       setRevokeMessage('Your Lender status was revoked. You can still borrow, and you can reapply anytime.');
-    } catch (error) {
-      if (error instanceof RevokeBlockedError) {
+    } catch (error: any) {
+      const isBlocked =
+        error instanceof RevokeBlockedError ||
+        error?.name === 'RevokeBlockedError' ||
+        String(error?.message).includes('Confirmed or Active order');
+      if (isBlocked) {
         setRevokeOpen(false);
         setBlockedOpen(true);
       } else {

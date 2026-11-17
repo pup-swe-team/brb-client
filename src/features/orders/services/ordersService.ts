@@ -18,11 +18,20 @@ let mockOrders: Order[] = [
   { id: 'o3', orderNumber: 'BRB-0131', role: 'Borrower', listingTitle: 'T-Square', status: 'Active', startDate: '2026-01-27', endDate: '2026-01-30', counterpart: 'Aaron Bien De Guzman', pickupLocation: 'PUP Library Lobby', pricePerDay: 10 },
   { id: 'o4', orderNumber: 'BRB-0119', role: 'Borrower', listingTitle: 'Concepts of Programming Languages', status: 'Overdue', startDate: '2026-01-17', endDate: '2026-01-24', counterpart: 'John Ezekiel Lacap', pickupLocation: 'PUP Main Gate', pricePerDay: 15 },
   { id: 'o5', orderNumber: 'BRB-0139', role: 'Borrower', listingTitle: 'Basic Calculator', status: 'Completed', startDate: '2026-01-06', endDate: '2026-01-10', counterpart: 'Princess Izzy Dancal', pickupLocation: 'PUP Library Lobby', pricePerDay: 10 },
-  { id: 'o6', orderNumber: 'BRB-0127', role: 'Borrower', listingTitle: 'T-Square', status: 'Declined', startDate: '2026-01-18', endDate: '2026-01-21', counterpart: 'Felicity Faith Villeta', pickupLocation: 'PUP Library Lobby', pricePerDay: 10 },
+  { id: 'o6', orderNumber: 'BRB-0127', role: 'Borrower', listingTitle: 'T-Square', status: 'Declined', startDate: '2026-01-18', endDate: '2026-01-21', counterpart: 'Felicity Faith Villeta', pickupLocation: 'PUP Library Lobby', pricePerDay: 10, declineReason: 'Lender status revoked' },
   { id: 'o7', orderNumber: 'BRB-0151', role: 'Lender', listingTitle: 'T-Square', status: 'Requested', startDate: '2026-02-02', endDate: '2026-02-05', counterpart: 'Felicity Faith Villeta', pickupLocation: 'PUP Library Lobby', pricePerDay: 10 },
   { id: 'o8', orderNumber: 'BRB-0158', role: 'Lender', listingTitle: 'Lab Coat (MEDIUM)', status: 'Confirmed', startDate: '2026-01-28', endDate: '2026-01-31', counterpart: 'Danielo Kim R. Ang', pickupLocation: 'PUP Main Gate', pricePerDay: 0 },
   { id: 'o9', orderNumber: 'BRB-0146', role: 'Lender', listingTitle: 'Lab Coat (MEDIUM)', status: 'Active', startDate: '2026-01-27', endDate: '2026-01-30', counterpart: 'John Ezekiel Lacap', pickupLocation: 'PUP Main Gate', pricePerDay: 0 },
 ];
+
+export function mockDeclineRequestedLendOrders() {
+  mockOrders = mockOrders.map((o) => {
+    if (o.role === 'Lender' && o.status === 'Requested') {
+      return { ...o, status: 'Declined', declineReason: 'Lender status revoked' };
+    }
+    return o;
+  });
+}
 
 function mockFind(id: string): Order {
   const order = mockOrders.find((o) => o.id === id);
@@ -130,6 +139,20 @@ export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
   const rawPrice = raw.pricePerDay ?? raw.price_per_day ?? raw.rate_per_day ?? raw.listing?.rate_per_day ?? raw.listing?.price_per_day;
   const pricePerDay = rawPrice != null ? Number(rawPrice) : undefined;
 
+  const declineReason =
+    raw.declineReason ||
+    raw.decline_reason ||
+    raw.declined_reason ||
+    raw.rejection_reason ||
+    (status === 'Declined' ? (raw.reason || raw.cancellation_reason) : undefined) ||
+    undefined;
+  const cancelReason =
+    raw.cancelReason ||
+    raw.cancel_reason ||
+    raw.cancellation_reason ||
+    (status === 'Cancelled' ? raw.reason : undefined) ||
+    undefined;
+
   return {
     id,
     listingId,
@@ -145,6 +168,8 @@ export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
     borrowerName: borrowerName || undefined,
     lenderName: lenderName || undefined,
     lockout: parseLockout(raw),
+    declineReason,
+    cancelReason,
   };
 }
 

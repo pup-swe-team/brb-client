@@ -24,4 +24,6 @@ export interface Order {
   borrowerName?: string;
   lenderName?: string;
   lockout?: OrderLockout;
+  declineReason?: string;
+  cancelReason?: string;
 }

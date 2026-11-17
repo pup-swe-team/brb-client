@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
@@ -18,10 +18,10 @@ export interface ReportSheetProps {
 // CP-901 Report form: category selector + description, submit via reportsService.
 // Categories depend on what is being reported.
 const ALLOWED: Record<ReportTargetType, string[]> = {
-  user: ['spam', 'harassment', 'fraud', 'inappropriate', 'other'],
-  listing: ['spam', 'inappropriate', 'fraud', 'prohibited_item', 'other'],
-  review: ['spam', 'inappropriate', 'harassment', 'other'],
-  message: ['spam', 'harassment', 'inappropriate', 'other'],
+  user: ['spam', 'scam', 'harassment', 'fraud', 'inappropriate', 'other'],
+  listing: ['spam', 'scam', 'inappropriate', 'fraud', 'prohibited_item', 'other'],
+  review: ['spam', 'scam', 'inappropriate', 'harassment', 'other'],
+  message: ['spam', 'scam', 'harassment', 'inappropriate', 'other'],
 };
 const TARGET_LABEL: Record<ReportTargetType, string> = {
   user: 'user',
@@ -44,23 +44,23 @@ export function ReportSheet({ visible, targetType, targetId, onClose, onSubmitte
     [targetType],
   );
 
-  // Start fresh every time the sheet opens.
-  useEffect(() => {
-    if (visible) {
-      setCategory(null);
-      setDescription('');
-      setAttempted(false);
-      setBusy(false);
-      setError(null);
-      setDone(false);
-    }
-  }, [visible]);
+  const resetForm = () => {
+    setCategory(null);
+    setDescription('');
+    setAttempted(false);
+    setBusy(false);
+    setError(null);
+    setDone(false);
+  };
 
   const categoryError = attempted && !category ? 'Choose a reason.' : null;
   const descError = attempted && description.trim().length === 0 ? 'Please describe the problem.' : null;
 
   const close = () => {
-    if (!busy) onClose();
+    if (!busy) {
+      resetForm();
+      onClose();
+    }
   };
 
   const submit = async () => {
@@ -79,6 +79,7 @@ export function ReportSheet({ visible, targetType, targetId, onClose, onSubmitte
   };
 
   const finish = () => {
+    resetForm();
     onSubmitted?.();
     onClose();
   };
@@ -90,12 +91,12 @@ export function ReportSheet({ visible, targetType, targetId, onClose, onSubmitte
         <View style={s.sheet}>
           {done ? (
             <View style={s.doneWrap}>
-              <Ionicons name="checkmark-circle" size={40} color={colors.success} />
-              <Text style={s.title}>Thanks for your report</Text>
-              <Text style={s.helper}>
+              <Ionicons name="checkmark-circle" size={48} color={colors.primary} />
+              <Text style={s.doneTitle}>Thanks for your report</Text>
+              <Text style={s.doneHelper}>
                 Our team will review it. We may follow up if we need more details.
               </Text>
-              <Button title="Done" onPress={finish} />
+              <Button title="Done" compact onPress={finish} />
             </View>
           ) : (
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={s.form}>
@@ -205,5 +206,23 @@ const s = StyleSheet.create({
   counter: { color: colors.textSecondary, fontSize: 9 },
   errorText: { color: colors.error, fontSize: 10, flexShrink: 1 },
 
-  doneWrap: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },
+  doneWrap: {
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.md,
+  },
+  doneTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  doneHelper: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: spacing.xs,
+  },
 });

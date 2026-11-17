@@ -1,6 +1,7 @@
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 
 import {
@@ -12,6 +13,7 @@ import {
 } from '../../../shared/components';
 import { colors, spacing, text } from '../../../theme';
 import type { Order, OrderRole } from '../../../shared/types';
+import { getCurrentUser, AuthUser } from '../../auth/services/authService';
 import { getOrder } from '../services/ordersService';
 import { CancelOrderAction } from '../components/CancelOrderAction';
 import { HandoverCodeAction } from '../components/HandoverCodeAction';
@@ -27,8 +29,15 @@ export default function OrderDetailScreen({ navigation, route }: any) {
   };
 
   const [order, setOrder] = useState<Order | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    getCurrentUser()
+      .then(setCurrentUser)
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(() => {
     let active = true;
@@ -61,7 +70,30 @@ export default function OrderDetailScreen({ navigation, route }: any) {
 
   useFocusEffect(load);
 
-  const role: OrderRole = roleParam ?? order?.role ?? 'Borrower';
+  // Derive the viewer role reliably: if the signed-in user's name matches the lender, they are Lender.
+  const role: OrderRole = useMemo(() => {
+    if (currentUser && order) {
+      const userNorm = currentUser.full_name.trim().toLowerCase();
+      const lenderNorm = (order.lenderName || '').trim().toLowerCase();
+      const borrowerNorm = (order.borrowerName || '').trim().toLowerCase();
+      if (lenderNorm && userNorm && (lenderNorm.includes(userNorm.split(' ')[0]) || userNorm.includes(lenderNorm.split(' ')[0]))) {
+        return 'Lender';
+      }
+      if (borrowerNorm && userNorm && (borrowerNorm.includes(userNorm.split(' ')[0]) || userNorm.includes(borrowerNorm.split(' ')[0]))) {
+        return 'Borrower';
+      }
+    }
+    return roleParam ?? order?.role ?? 'Borrower';
+  }, [currentUser, order, roleParam]);
+
+  const counterpartName = useMemo(() => {
+    if (!order) return '';
+    if (role === 'Lender') {
+      return order.borrowerName || order.counterpart || 'Borrower';
+    }
+    return order.lenderName || order.counterpart || 'Lender';
+  }, [order, role]);
+
   const status = order?.status;
   const slotProps = order ? { order, role, navigation, onChanged: load } : null;
 
@@ -107,7 +139,7 @@ export default function OrderDetailScreen({ navigation, route }: any) {
 
               <Text style={text.body}>
                 {role === 'Lender' ? 'Borrowed by' : 'From'}{' '}
-                {order.counterpart}
+                {counterpartName}
               </Text>
 
               <Text style={text.caption}>
@@ -127,6 +159,34 @@ export default function OrderDetailScreen({ navigation, route }: any) {
                   : ''}
               </Text>
             </Card>
+
+            {order.status === 'Declined' && (
+              <Card style={s.statusReasonCard}>
+                <View style={s.statusReasonHeader}>
+                  <Ionicons name="information-circle-outline" size={18} color={colors.error} />
+                  <Text style={[text.title, { color: colors.error }]}>Request Declined</Text>
+                </View>
+                <Text style={text.body}>
+                  {order.declineReason
+                    ? `Reason: ${order.declineReason}`
+                    : 'This request was declined by the lender.'}
+                </Text>
+              </Card>
+            )}
+
+            {order.status === 'Cancelled' && (
+              <Card style={s.statusReasonCard}>
+                <View style={s.statusReasonHeader}>
+                  <Ionicons name="close-circle-outline" size={18} color={colors.textSecondary} />
+                  <Text style={[text.title, { color: colors.textSecondary }]}>Order Cancelled</Text>
+                </View>
+                <Text style={text.body}>
+                  {order.cancelReason
+                    ? `Reason: ${order.cancelReason}`
+                    : 'This order was cancelled.'}
+                </Text>
+              </Card>
+            )}
 
             {showRespond && <RespondToRequestActions {...slotProps} />}
             {showHandover && <HandoverCodeAction {...slotProps} />}
@@ -149,5 +209,15 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  statusReasonCard: {
+    gap: spacing.xs,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.error,
+  },
+  statusReasonHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
 });

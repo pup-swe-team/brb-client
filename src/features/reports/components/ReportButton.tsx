@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, text } from '../../../theme';
+import { colors, radius, spacing, text } from '../../../theme';
 import type { ReportTargetType } from '../services/reportsService';
 import { ReportSheet } from './ReportSheet';
 
@@ -20,7 +20,7 @@ export function ReportButton({ targetType, targetId }: { targetType: ReportTarge
         accessibilityRole="button"
         accessibilityLabel={`Report this ${targetType}`}
       >
-        <Ionicons name="flag-outline" size={14} color={colors.textMuted} />
+        <Ionicons name="flag-outline" size={14} color={colors.primary} />
         <Text style={[text.caption, s.label]}>Report</Text>
       </Pressable>
       <ReportSheet
@@ -34,6 +34,22 @@ export function ReportButton({ targetType, targetId }: { targetType: ReportTarge
 }
 
 const s = StyleSheet.create({
-  button: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start', paddingVertical: spacing.xs },
-  label: { color: colors.textMuted },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    alignSelf: 'flex-start',
+    paddingVertical: 5,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    marginVertical: spacing.xs,
+  },
+  label: {
+    color: colors.primary,
+    fontWeight: '600',
+    fontSize: 12,
+  },
 });

@@ -6,7 +6,6 @@ import { Button, Input } from '../../../shared/components';
 import { extractApiError } from '../../../services/http';
 import { SettingsShell } from '../components/SettingsShell';
 import { requestEmailChange, resendEmailChangeVerification, confirmEmailChange } from '../services/accountService';
-import { verifyEmail } from '../../auth/services/authService';
 import { extractUidToken } from '../../auth/screens/VerifyEmailScreen';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

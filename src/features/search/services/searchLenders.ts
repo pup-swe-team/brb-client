@@ -29,15 +29,29 @@ async function searchMock(keyword: string, page: number, pageSize: number): Prom
 }
 
 function mapBackendLender(item: any): LenderSummary {
+  const rating =
+    item.average_rating != null
+      ? Number(item.average_rating)
+      : item.rating != null
+      ? Number(item.rating)
+      : 0;
+  const reviewCount =
+    item.review_count != null
+      ? Number(item.review_count)
+      : item.reviews_count != null
+      ? Number(item.reviews_count)
+      : 0;
+
   return {
     id: String(item.id),
-    fullName: item.full_name,
-    verified: true,
+    fullName: item.full_name ?? '',
+    verified: Boolean(item.is_verified ?? true),
     affiliation: item.affiliation ?? 'Student',
-    photoUrl: item.photo ?? undefined,
-    rating: 4.8,
-    reviewCount: 5,
-    activeListings: item.active_listing_count ?? 0,
+    photoUrl: item.photo ?? item.photo_url ?? undefined,
+    program: item.program ?? undefined,
+    rating,
+    reviewCount,
+    activeListings: item.active_listing_count ?? item.active_listings_count ?? 0,
   };
 }
 

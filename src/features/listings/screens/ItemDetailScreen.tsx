@@ -159,21 +159,26 @@ export default function ItemDetailScreen({ navigation, route }: any) {
     };
   }, [lenderId]);
   
-const reviews = (lender?.reviews ?? []).filter(
-  (review) =>
-    review.itemTitle.trim().toLowerCase() ===
-    title.trim().toLowerCase()
-);
+  const itemReviews = (lender?.reviews ?? []).filter((review) => {
+    const rTitle = review.itemTitle.trim().toLowerCase();
+    const lTitle = title.trim().toLowerCase();
+    return (
+      rTitle === lTitle ||
+      rTitle.includes(lTitle) ||
+      lTitle.includes(rTitle)
+    );
+  });
 
-const reviewTotal = reviews.length;
+  const reviews = itemReviews.length > 0 ? itemReviews : (lender?.reviews ?? []);
+  const reviewTotal = reviews.length;
 
-const countFor = (stars: number) =>
-  reviews.filter((review) => review.rating === stars).length;
+  const countFor = (stars: number) =>
+    reviews.filter((review) => review.rating === stars).length;
 
-const barWidth = (stars: number): `${number}%` =>
-  `${reviewTotal
-    ? Math.round((countFor(stars) / reviewTotal) * 100)
-    : 0}%`;
+  const barWidth = (stars: number): `${number}%` =>
+    `${reviewTotal
+      ? Math.round((countFor(stars) / reviewTotal) * 100)
+      : 0}%`;
 
   const [checkout, setCheckout] = useState('');
   const [returnDate, setReturnDate] = useState('');

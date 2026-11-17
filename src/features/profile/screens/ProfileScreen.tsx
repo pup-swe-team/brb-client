@@ -40,7 +40,7 @@ const SECTIONS: { title: string; statuses: OrderStatus[] }[] = [
   { title: 'Active', statuses: ['Active'] },
   { title: 'Overdue', statuses: ['Overdue', 'Unreturned'] },
   {
-    title: 'Past',
+    title: 'Past Orders',
     statuses: ['Completed', 'Declined', 'Expired', 'Cancelled', 'Returned', 'Disputed'],
   },
 ];
@@ -88,6 +88,9 @@ function dateLine(order: Order) {
       return left >= 0 ? `${base} · ${dayCount(left)} left` : base;
     }
     case 'Declined':
+      return order.declineReason
+        ? `Declined · ${order.declineReason}`
+        : `Requested ${formatDay(order.startDate, true)}`;
     case 'Expired':
       return `Requested ${formatDay(order.startDate, true)}`;
     default:
@@ -664,7 +667,7 @@ export default function ProfileScreen({ navigation, route }: any) {
           )}
 
           {/* REVIEWS (CP-601, Izzy edits ReviewsSection) */}
-          <ReviewsSection />
+          <ReviewsSection role={role} />
 
           <View style={styles.bottomSpace} />
         </ScrollView>

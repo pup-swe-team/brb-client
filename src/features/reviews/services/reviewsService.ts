@@ -1,5 +1,6 @@
 
 import { extractApiError, http, USE_MOCK } from '../../../services/http';
+import { LenderReview } from '../../profile/services/lenderTypes';
 
 // OWNER: Izzy. CP-601 Rate and review counterparty after order completion.
 // API paths remain assumptions until confirmed by the backend.
@@ -16,10 +17,75 @@ export interface SubmittedReview {
   rating: number;
   comment: string;
   createdAt: string;
+  reviewerName?: string;
+  itemTitle?: string;
 }
 
 // Keeps mock reviews available while navigating between screens.
 const mockReviews = new Map<string, SubmittedReview>();
+
+const mockBorrowerReviews: LenderReview[] = [
+  {
+    id: 'br-1',
+    reviewerName: 'Princess Izzy Dancal',
+    reviewerVerified: true,
+    rating: 5,
+    comment: 'Great borrower! Handled the calculator carefully and returned it right on time.',
+    itemTitle: 'Basic Calculator',
+    date: '2026-11-05',
+  },
+  {
+    id: 'br-2',
+    reviewerName: 'Aaron Bien De Guzman',
+    reviewerVerified: true,
+    rating: 5,
+    comment: 'Punctual and very easy to communicate with during pickup and return.',
+    itemTitle: 'T-Square',
+    date: '2026-11-01',
+  },
+];
+
+export async function getReceivedReviews(
+  role: 'Borrower' | 'Lender' = 'Borrower',
+  userId?: string
+): Promise<LenderReview[]> {
+  if (USE_MOCK) {
+    if (role === 'Borrower') {
+      const extra: LenderReview[] = [];
+      mockReviews.forEach((r, orderId) => {
+        extra.push({
+          id: r.id,
+          reviewerName: r.reviewerName || 'Lender',
+          reviewerVerified: true,
+          rating: r.rating,
+          comment: r.comment,
+          itemTitle: r.itemTitle || 'Borrowed Item',
+          date: r.createdAt.slice(0, 10),
+        });
+      });
+      return [...extra, ...mockBorrowerReviews];
+    }
+    return [];
+  }
+
+  try {
+    const { data } = await http.get<any>('/reviews/', {
+      params: { target_user: userId, role: role.toLowerCase() },
+    });
+    const list = Array.isArray(data) ? data : (data?.results ?? []);
+    return list.map((item: any) => ({
+      id: String(item.id),
+      reviewerName: item.reviewer?.full_name || item.reviewer_name || 'Reviewer',
+      reviewerVerified: Boolean(item.reviewer?.is_verified ?? true),
+      rating: Number(item.rating || 5),
+      comment: String(item.comment || ''),
+      itemTitle: item.order?.listing_title || item.listing_title || item.item_title || 'Item',
+      date: String(item.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
+    }));
+  } catch {
+    return role === 'Borrower' ? mockBorrowerReviews : [];
+  }
+}
 
 export async function getOrderReview(
   orderId: string

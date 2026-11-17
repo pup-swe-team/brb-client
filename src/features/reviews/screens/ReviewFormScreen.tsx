@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -43,6 +44,7 @@ export default function ReviewFormScreen({
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
   const [alreadyReviewed, setAlreadyReviewed] = useState(false);
+  const [submittedModalOpen, setSubmittedModalOpen] = useState(false);
   const [ratingError, setRatingError] = useState('');
   const [commentError, setCommentError] = useState('');
   const [checkError, setCheckError] = useState('');
@@ -130,16 +132,7 @@ export default function ReviewFormScreen({
         comment: comment.trim(),
       });
 
-      Alert.alert(
-        'Review Submitted',
-        'Thank you for sharing your experience!',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]
-      );
+      setSubmittedModalOpen(true);
     } catch (error: any) {
       Alert.alert(
         'Submission Failed',
@@ -158,7 +151,7 @@ export default function ReviewFormScreen({
         onBack={() => navigation.goBack()}
       />
 
-      <ScreenContainer scroll>
+      <ScreenContainer scroll keyboardAware>
         <View style={styles.container}>
           <View style={styles.intro}>
             <Text style={styles.title}>
@@ -322,6 +315,35 @@ export default function ReviewFormScreen({
           )}
         </View>
       </ScreenContainer>
+
+      <Modal
+        visible={submittedModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setSubmittedModalOpen(false);
+          navigation.goBack();
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.successIcon}>
+              <Ionicons name="checkmark-circle" size={52} color={colors.primary} />
+            </View>
+            <Text style={styles.modalTitle}>Review Submitted</Text>
+            <Text style={styles.modalBody}>
+              Thank you for sharing your experience! Your review helps build trust in the BRB community.
+            </Text>
+            <Button
+              title="Done"
+              onPress={() => {
+                setSubmittedModalOpen(false);
+                navigation.goBack();
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -418,5 +440,36 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  modalCard: {
+    backgroundColor: colors.white,
+    borderRadius: radius.card,
+    padding: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  successIcon: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  modalBody: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
   },
 });

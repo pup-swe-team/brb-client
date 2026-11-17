@@ -12,9 +12,14 @@ import { getLenderProfile } from '../../profile/services/lenderProfile';
 import { MOCK_LENDERS } from '../../profile/services/mockLenders';
 import { LenderReview } from '../../profile/services/lenderTypes';
 import { LenderReviewCard } from '../../profile/components/LenderReviewCard';
+import { getReceivedReviews } from '../services/reviewsService';
 import { colors, spacing } from '../../../theme';
 
-export function ReviewsSection() {
+type Props = {
+  role?: 'Borrower' | 'Lender';
+};
+
+export function ReviewsSection({ role = 'Borrower' }: Props) {
   const [reviews, setReviews] = useState<LenderReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -29,6 +34,14 @@ export function ReviewsSection() {
 
         const user = await getCurrentUser();
 
+        if (role === 'Borrower') {
+          const borrowerReviews = await getReceivedReviews('Borrower', String(user.id));
+          if (active) {
+            setReviews(borrowerReviews);
+          }
+          return;
+        }
+
         let profile;
 
         if (process.env.EXPO_PUBLIC_USE_MOCK === 'true') {
@@ -39,10 +52,15 @@ export function ReviewsSection() {
           );
 
           if (!profile) {
-            throw new Error('Your lender profile was not found.');
+            // Fallback for lender mode
+            profile = { reviews: [] };
           }
         } else {
-          profile = await getLenderProfile(String(user.id));
+          try {
+            profile = await getLenderProfile(String(user.id));
+          } catch {
+            profile = { reviews: [] };
+          }
         }
 
         if (active) {
@@ -66,11 +84,13 @@ export function ReviewsSection() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [role]);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Reviews Received</Text>
+      <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit>
+        Reviews Received
+      </Text>
 
       {loading ? (
         <ActivityIndicator color={colors.primary} />
@@ -78,7 +98,7 @@ export function ReviewsSection() {
         <Text style={styles.message}>{error}</Text>
       ) : reviews.length === 0 ? (
         <Text style={styles.message}>
-          You haven't received any reviews yet.
+          You haven&apos;t received any reviews yet.
         </Text>
       ) : (
         reviews.map((review) => (
@@ -92,9 +112,11 @@ export function ReviewsSection() {
 const styles = StyleSheet.create({
   container: {
     marginTop: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    width: '100%',
   },
   title: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.text,
     marginBottom: spacing.md,
