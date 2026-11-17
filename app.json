@@ -17,8 +17,7 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false,
-      "package": "com.copup.brbclient"
+      "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -34,11 +33,6 @@
           "microphonePermission": false
         }
       ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "1e5b8ce6-f792-408f-a8f0-ce3f2b6588b5"
-      }
-    }
+    ]
   }
 }
