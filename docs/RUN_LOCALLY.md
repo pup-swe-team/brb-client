@@ -10,7 +10,7 @@ A streamlined guide for running, developing, and performing manual QA testing on
 ```powershell
 cd brb-server
 
-# 1. Install dependencies with uv
+# 1. Install dependencies with uv (or standard venv: python -m venv .venv; .\.venv\Scripts\activate; pip install -e .)
 uv sync
 
 # 2. Create your local .env configuration
@@ -20,6 +20,7 @@ Copy-Item .env.example .env
 uv run python manage.py migrate
 
 # 4. Populate test catalogue (Categories, Locations, 12 Demo Lenders & 35+ Listings)
+# NOTE: Only run this on a fresh local SQLite database. If connected to the shared Render DB, skip this step!
 uv run python manage.py seed_demo_data --demo
 ```
 
@@ -54,6 +55,8 @@ EXPO_PUBLIC_API_URL=http://localhost:8000/api/v1
 # Option 4: Deployed Render Backend (No local backend needed!)
 # EXPO_PUBLIC_API_URL=https://brb-server.onrender.com/api/v1
 
+# CRITICAL: MUST be false to connect to the backend APIs!
+# (Note: .env.example defaults to true for offline mock mode)
 EXPO_PUBLIC_USE_MOCK=false
 ```
 > **Tip for Physical Phones:** Find your PC's IP using `ipconfig` (IPv4 Address, e.g., `192.168.100.194`). Your phone and PC must be on the **same Wi-Fi network**.
@@ -61,16 +64,24 @@ EXPO_PUBLIC_USE_MOCK=false
 ### Backend (`brb-server/.env`)
 ```ini
 DEBUG=True
+SECRET_KEY=django-insecure-brb-dev-secret-key-change-this-in-production
 
-# Option A: Local SQLite (Fastest for isolated dev)
-DATABASE_URL=sqlite:///db.sqlite3
+# Option A: Shared Render Cloud PostgreSQL (Recommended for Team QA & sync)
+DATABASE_URL=postgresql://copup_db_v2_user:4RbN7r2JbdYT6kn2AsKlUf8GDCkXAlNM@dpg-dbm7meec6qcc7387nqs0-a.singapore-postgres.render.com/copup_db_v2
 
-# Option B: Shared Render Cloud PostgreSQL (Syncs live with team)
-# DATABASE_URL=postgresql://copup_db_v2_user:4RbN7r2JbdYT6kn2AsKlUf8GDCkXAlNM@dpg-dbm7meec6qcc7387nqs0-a.singapore-postgres.render.com/copup_db_v2
+# Option B: Local SQLite (Fastest for isolated offline dev)
+# DATABASE_URL=sqlite:///db.sqlite3
 
 ALLOWED_HOSTS=localhost,127.0.0.1,<YOUR-PC-LAN-IP>,.onrender.com
 JWT_SECRET=your-jwt-secret-key-at-least-32-bytes-long
+
+# Cloudinary Cloud Media Storage (Required for listing photos & avatar uploads)
+CLOUDINARY_CLOUD_NAME=stzvt24e
+CLOUDINARY_API_KEY=824867267216432
+CLOUDINARY_API_SECRET=QmfCufrzZqTSNleRnH2XX6P9Uyw
+CLOUDINARY_URL=cloudinary://824867267216432:QmfCufrzZqTSNleRnH2XX6P9Uyw@stzvt24e
 ```
+> **Media & Cloudinary Storage:** When `CLOUDINARY_*` variables are provided in `.env`, Django automatically uploads listing photos and user avatars directly to Cloudinary and saves their secure URLs in the Render database. If omitted, Django falls back to local disk storage (`media/`).
 
 ---
 
@@ -166,5 +177,8 @@ uv run python manage.py createsuperuser
 | **Verification email not arriving** | Emails are printed to the console. Look at the terminal running `runserver` to copy the verification link. |
 | **Android Emulator cannot connect to localhost** | Use `http://10.0.2.2:8000/api/v1` instead of `localhost` in `brb-client/.env`. |
 | **Database connection error** | Verify `DATABASE_URL` in `brb-server/.env`. For cloud, ensure `copup_db_v2` is active; for local, use `sqlite:///db.sqlite3`. |
+| **Photos/avatars not displaying or uploading** | Ensure `CLOUDINARY_*` credentials are set in `brb-server/.env`. Uploaded images will sync to the Cloudinary bucket `stzvt24e`. |
+| **Mock data still showing / Backend not hit** | Verify `EXPO_PUBLIC_USE_MOCK=false` in `brb-client/.env`. Restart Expo with `npx expo start -c` to clear the bundler cache. |
+| **PowerShell script execution disabled** | If Windows blocks running scripts, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` in your PowerShell window. |
 | **Expo cache stale / changes not showing** | Press `r` in the Expo terminal to reload, or restart with `npx expo start -c` to clear the bundler cache. |
 | **TypeScript check in client** | Run `node node_modules/typescript/bin/tsc --noEmit` in `brb-client` to verify static typing. |

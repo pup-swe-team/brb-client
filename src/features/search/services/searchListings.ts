@@ -104,6 +104,15 @@ export async function searchListings(p: SearchParams): Promise<SearchResult> {
   } else if (p.sort === 'rating') {
     params.sort = '-created_at';
   }
+  if (p.filters?.minRating != null && p.filters.minRating > 0) {
+    params.min_rating = p.filters.minRating;
+  }
+  if (p.filters?.availableFrom?.trim()) {
+    params.available_from = p.filters.availableFrom.trim();
+  }
+  if (p.filters?.availableTo?.trim()) {
+    params.available_to = p.filters.availableTo.trim();
+  }
 
   const { data } = await http.get('/listings/', { params });
   const rawList: any[] = Array.isArray(data) ? data : (data.results ?? []);
@@ -115,11 +124,23 @@ export async function searchListings(p: SearchParams): Promise<SearchResult> {
     }
     return true;
   });
-  const count: number = Array.isArray(data) ? filteredList.length : (data.count ?? filteredList.length);
+
+  let items = filteredList.map(mapBackendListing);
+  if (p.filters?.minRating != null && p.filters.minRating > 0) {
+    items = items.filter((item) => item.rating >= p.filters.minRating!);
+  }
+  if (p.filters?.category) {
+    items = items.filter((item) => item.category === p.filters.category);
+  }
+  if (p.filters?.location) {
+    items = items.filter((item) => item.location === p.filters.location);
+  }
+
+  const count = items.length;
   const totalPages = Math.max(1, Math.ceil(count / p.pageSize));
 
   return {
-    items: filteredList.map(mapBackendListing),
+    items,
     page: p.page,
     totalPages,
     total: count,
