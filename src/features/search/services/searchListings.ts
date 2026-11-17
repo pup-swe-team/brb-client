@@ -2,13 +2,34 @@ import { Listing, SearchParams, SearchResult, ListingCategory } from '../types';
 import { http, USE_MOCK } from '../../../services/http';
 import { MOCK_LISTINGS } from './mockListings';
 
+function matchesLocation(itemLocation?: string | null, filterLocation?: string | null): boolean {
+  if (!filterLocation) return true;
+  if (!itemLocation) return false;
+
+  const cleanItem = itemLocation.toLowerCase().replace(/^pup\s+/, '').trim();
+  const cleanFilter = filterLocation.toLowerCase().replace(/^pup\s+/, '').trim();
+
+  return (
+    itemLocation.toLowerCase() === filterLocation.toLowerCase() ||
+    cleanItem === cleanFilter ||
+    cleanItem.includes(cleanFilter) ||
+    cleanFilter.includes(cleanItem)
+  );
+}
+
+function matchesCategory(itemCategory?: string | null, filterCategory?: string | null): boolean {
+  if (!filterCategory) return true;
+  if (!itemCategory) return false;
+  return itemCategory.toLowerCase() === filterCategory.toLowerCase();
+}
+
 function matches(l: Listing, p: SearchParams): boolean {
   const kw = p.keyword.trim().toLowerCase();
   if (kw && !`${l.title} ${l.category} ${l.ownerName}`.toLowerCase().includes(kw)) return false;
 
   const f = p.filters;
-  if (f.category && l.category !== f.category) return false;
-  if (f.location && l.location !== f.location) return false;
+  if (f.category && !matchesCategory(l.category, f.category)) return false;
+  if (f.location && !matchesLocation(l.location, f.location)) return false;
   if (f.minRating && l.rating < f.minRating) return false;
 
   // Availability: the listing's window must cover the requested dates (YYYY-MM-DD compares as text).
@@ -113,6 +134,12 @@ export async function searchListings(p: SearchParams): Promise<SearchResult> {
   if (p.filters?.availableTo?.trim()) {
     params.available_to = p.filters.availableTo.trim();
   }
+  if (p.filters?.location?.trim() && /^\d+$/.test(p.filters.location.trim())) {
+    params.pickup_location = Number(p.filters.location.trim());
+  }
+  if (p.filters?.category?.trim() && /^\d+$/.test(p.filters.category.trim())) {
+    params.category = Number(p.filters.category.trim());
+  }
 
   const { data } = await http.get('/listings/', { params });
   const rawList: any[] = Array.isArray(data) ? data : (data.results ?? []);
@@ -130,10 +157,10 @@ export async function searchListings(p: SearchParams): Promise<SearchResult> {
     items = items.filter((item) => item.rating >= p.filters.minRating!);
   }
   if (p.filters?.category) {
-    items = items.filter((item) => item.category === p.filters.category);
+    items = items.filter((item) => matchesCategory(item.category, p.filters.category));
   }
   if (p.filters?.location) {
-    items = items.filter((item) => item.location === p.filters.location);
+    items = items.filter((item) => matchesLocation(item.location, p.filters.location));
   }
 
   const count = items.length;
