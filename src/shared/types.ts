@@ -26,4 +26,6 @@ export interface Order {
   lockout?: OrderLockout;
   declineReason?: string;
   cancelReason?: string;
+  review?: any;
+  reviews?: any[];
 }

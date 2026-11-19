@@ -78,10 +78,57 @@ This document outlines the bugs and requirements identified during Sprint 4 QA t
 
 ---
 
-### **FE-BUG-4009: Reviews Received by Borrowers**
-- **Target Area:** `GET /reviews/` endpoint
+### **FE-BUG-4009: Borrower Dashboard "Reviews Received" Section Does Not Display Borrower Reviews**
+- **Target Area:** `GET /reviews/` endpoint & `GET /users/me/borrower-dashboard/`
 - **Issue:**
-  Reviews submitted by lenders for borrowers should be queryable by user ID and role.
-- **Backend Requirement:**
-  1. Support filtering reviews by target user: `GET /reviews/?target_user={user_id}&role=borrower`.
-  2. Return the review object including `reviewer` (lender name, verification status), `rating`, `comment`, `order` details, and `created_at`.
+  Reviews submitted by lenders for the borrower do not appear in the "Reviews Received" section on the Borrower Dashboard.
+- **What We Did on the Frontend:**
+  1. Updated `ReviewsSection.tsx` with `useFocusEffect` so reviews auto-refresh on screen focus when returning from completed orders or switching dashboard roles.
+  2. Implemented multi-tier fallback querying:
+     - First tries `GET /reviews/?target_user={user_id}&role=borrower`.
+     - Then checks `GET /users/me/borrower-dashboard/` for any `reviews` or `reviews_received` array.
+     - Fallback / direct resolution: queries reviews attached to completed borrower orders via `GET /orders/{id}/review/` or embedded `order.review` objects.
+  3. Removed fallback to hardcoded mock reviews when running in live backend mode (`USE_MOCK=false`), ensuring real borrower accounts show their true review list or the "You haven't received any reviews yet." empty state.
+- **Backend Requirements for the Backend Team:**
+  1. **Option A (Preferred):** Support query filtering on `GET /reviews/`:
+     - Filter reviews by `target_user`: `GET /reviews/?target_user={user_id}&role=borrower`.
+     - When queried by a borrower, return all reviews where that user was the borrower in the associated order.
+  2. **Option B:** In `GET /users/me/borrower-dashboard/`, include a `reviews_received` (or `reviews`) field containing all reviews submitted by lenders for the authenticated borrower.
+  3. Ensure the serialized review object includes:
+     - `id`: Unique review ID
+     - `reviewer`: `{ id, full_name, is_verified }`
+     - `rating`: Integer (1–5)
+     - `comment`: Text
+     - `order`: `{ id, listing_title }` (or `item_title`)
+     - `created_at`: ISO timestamp
+
+---
+
+### **FE-BUG-4101: Lender Reviews Showing Up Instead of Just Product Reviews**
+- **Target Area:** `GET /listings/{id}/` endpoint & `GET /lenders/{id}/`
+- **Issue:**
+  On the listing details page (`ItemDetailScreen`), all of the lender’s reviews across all their items were being displayed under "Product Reviews", instead of only showing reviews specifically for that listing.
+- **What We Did on the Frontend:**
+  1. In `ItemDetailScreen.tsx`, strictly restricted the "Product Reviews" section to reviews matching the specific listing/product.
+  2. Removed the fallback to `lender.reviews` when no reviews exist for this item.
+  3. When an item has no reviews, the screen now correctly displays the empty state: `"No reviews for this item yet."` (`reviewTotal === 0`), while the lender card above continues to display the lender's overall rating and total review count.
+  4. Added support for `detailData.reviews` if the backend embeds listing-specific reviews in the `GET /listings/{id}/` payload.
+- **Backend Requirements for the Backend Team:**
+  1. In `GET /listings/{id}/`, optionally return a `reviews` array containing only reviews associated with orders for this specific listing:
+     ```json
+     {
+       "id": 1,
+       "title": "Basic Calculator",
+       "rate_per_day": 10,
+       "reviews": [
+         {
+           "id": 101,
+           "rating": 5,
+           "comment": "Works great for exams!",
+           "reviewer_name": "Princess Izzy",
+           "created_at": "2026-11-05T00:00:00Z"
+         }
+       ]
+     }
+     ```
+  2. Maintain `GET /lenders/{id}/` returning all reviews of that lender for the public lender profile view, but keep listing queries isolated to reviews for that specific listing.

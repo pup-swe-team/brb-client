@@ -1,6 +1,7 @@
 
 import { extractApiError, http, USE_MOCK } from '../../../services/http';
 import { LenderReview } from '../../profile/services/lenderTypes';
+import { getMyOrders } from '../../orders/services/ordersService';
 
 // OWNER: Izzy. CP-601 Rate and review counterparty after order completion.
 // API paths remain assumptions until confirmed by the backend.
@@ -45,46 +46,123 @@ const mockBorrowerReviews: LenderReview[] = [
   },
 ];
 
+async function getReviewsFromCompletedOrders(
+  role: 'Borrower' | 'Lender',
+  userId?: string
+): Promise<LenderReview[]> {
+  try {
+    const orders = await getMyOrders(role);
+    const completed = orders.filter(
+      (o) => o.status === 'Completed' || o.status === 'Returned'
+    );
+    if (completed.length === 0) return [];
+
+    const reviews: LenderReview[] = [];
+    for (const order of completed) {
+      // 1. Check if the order payload already has embedded review data
+      const embedded = (order as any).review || (order as any).reviews?.[0];
+      if (embedded && embedded.rating != null) {
+        reviews.push({
+          id: String(embedded.id || `order-${order.id}`),
+          reviewerName:
+            embedded.reviewer?.full_name ||
+            embedded.reviewer_name ||
+            (role === 'Borrower'
+              ? order.lenderName || order.counterpart || 'Lender'
+              : order.borrowerName || order.counterpart || 'Borrower'),
+          reviewerVerified: Boolean(embedded.reviewer?.is_verified ?? true),
+          rating: Number(embedded.rating || 5),
+          comment: String(embedded.comment || ''),
+          itemTitle: order.listingTitle || 'Borrowed Item',
+          date: String(embedded.created_at || order.endDate || '').slice(0, 10),
+        });
+        continue;
+      }
+
+      // 2. Fetch the review via GET /orders/{id}/review/
+      try {
+        const orderReview = await getOrderReview(order.id);
+        if (orderReview) {
+          reviews.push({
+            id: String(orderReview.id || `order-${order.id}`),
+            reviewerName:
+              orderReview.reviewerName ||
+              (role === 'Borrower'
+                ? order.lenderName || order.counterpart || 'Lender'
+                : order.borrowerName || order.counterpart || 'Borrower'),
+            reviewerVerified: true,
+            rating: Number(orderReview.rating || 5),
+            comment: String(orderReview.comment || ''),
+            itemTitle: order.listingTitle || orderReview.itemTitle || 'Borrowed Item',
+            date: String(orderReview.createdAt || order.endDate || '').slice(0, 10),
+          });
+        }
+      } catch {
+        // Individual order failure is non-fatal
+      }
+    }
+    return reviews;
+  } catch {
+    return [];
+  }
+}
+
 export async function getReceivedReviews(
   role: 'Borrower' | 'Lender' = 'Borrower',
   userId?: string
 ): Promise<LenderReview[]> {
   if (USE_MOCK) {
-    if (role === 'Borrower') {
-      const extra: LenderReview[] = [];
-      mockReviews.forEach((r, orderId) => {
-        extra.push({
-          id: r.id,
-          reviewerName: r.reviewerName || 'Lender',
-          reviewerVerified: true,
-          rating: r.rating,
-          comment: r.comment,
-          itemTitle: r.itemTitle || 'Borrowed Item',
-          date: r.createdAt.slice(0, 10),
-        });
-      });
-      return [...extra, ...mockBorrowerReviews];
+    const orderReviews = await getReviewsFromCompletedOrders(role, userId);
+    if (orderReviews.length > 0) {
+      return [...orderReviews, ...mockBorrowerReviews];
     }
-    return [];
+    return role === 'Borrower' ? mockBorrowerReviews : [];
   }
 
+  // 1. Try GET /reviews/ with target_user and role query parameters
   try {
     const { data } = await http.get<any>('/reviews/', {
       params: { target_user: userId, role: role.toLowerCase() },
     });
     const list = Array.isArray(data) ? data : (data?.results ?? []);
-    return list.map((item: any) => ({
-      id: String(item.id),
-      reviewerName: item.reviewer?.full_name || item.reviewer_name || 'Reviewer',
-      reviewerVerified: Boolean(item.reviewer?.is_verified ?? true),
-      rating: Number(item.rating || 5),
-      comment: String(item.comment || ''),
-      itemTitle: item.order?.listing_title || item.listing_title || item.item_title || 'Item',
-      date: String(item.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
-    }));
+    if (Array.isArray(list) && list.length > 0) {
+      return list.map((item: any) => ({
+        id: String(item.id),
+        reviewerName: item.reviewer?.full_name || item.reviewer_name || (role === 'Borrower' ? 'Lender' : 'Borrower'),
+        reviewerVerified: Boolean(item.reviewer?.is_verified ?? true),
+        rating: Number(item.rating || 5),
+        comment: String(item.comment || ''),
+        itemTitle: item.order?.listing_title || item.listing_title || item.item_title || 'Borrowed Item',
+        date: String(item.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
+      }));
+    }
   } catch {
-    return role === 'Borrower' ? mockBorrowerReviews : [];
+    // Continue to dashboard and order review fallbacks
   }
+
+  // 2. Try dashboard endpoint (/users/me/borrower-dashboard/ or /users/me/lender-dashboard/)
+  try {
+    const dashPath = role === 'Borrower' ? '/users/me/borrower-dashboard/' : '/users/me/lender-dashboard/';
+    const { data } = await http.get<any>(dashPath);
+    const rawList = data?.reviews || data?.reviews_received || data?.received_reviews;
+    if (Array.isArray(rawList) && rawList.length > 0) {
+      return rawList.map((item: any) => ({
+        id: String(item.id),
+        reviewerName: item.reviewer?.full_name || item.reviewer_name || (role === 'Borrower' ? 'Lender' : 'Borrower'),
+        reviewerVerified: Boolean(item.reviewer?.is_verified ?? true),
+        rating: Number(item.rating || 5),
+        comment: String(item.comment || ''),
+        itemTitle: item.order?.listing_title || item.listing_title || item.item_title || 'Borrowed Item',
+        date: String(item.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
+      }));
+    }
+  } catch {
+    // Continue to completed orders fallback
+  }
+
+  // 3. Fallback: Query reviews from completed orders via GET /orders/{id}/review/
+  const completedReviews = await getReviewsFromCompletedOrders(role, userId);
+  return completedReviews;
 }
 
 export async function getOrderReview(
@@ -96,14 +174,17 @@ export async function getOrderReview(
 
   try {
     const { data } = await http.get<any>(`/orders/${orderId}/review/`);
+    const raw = Array.isArray(data) ? data[0] : (data?.review ?? data);
 
-    return data?.id
+    return raw?.id || raw?.rating != null
       ? {
-          id: String(data.id),
+          id: String(raw.id ?? orderId),
           orderId,
-          rating: Number(data.rating),
-          comment: String(data.comment ?? ''),
-          createdAt: String(data.created_at ?? ''),
+          rating: Number(raw.rating),
+          comment: String(raw.comment ?? ''),
+          createdAt: String(raw.created_at ?? ''),
+          reviewerName: raw.reviewer?.full_name || raw.reviewer_name || raw.reviewer,
+          itemTitle: raw.order?.listing_title || raw.listing_title || raw.item_title,
         }
       : null;
   } catch (error: any) {
@@ -111,7 +192,7 @@ export async function getOrderReview(
       return null;
     }
 
-    throw new Error(extractApiError(error));
+    return null;
   }
 }
 

@@ -1,11 +1,12 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { getCurrentUser } from '../../auth/services/authService';
 import { getLenderProfile } from '../../profile/services/lenderProfile';
@@ -24,67 +25,75 @@ export function ReviewsSection({ role = 'Borrower' }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    let active = true;
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
 
-    async function loadReviews() {
-      try {
-        setLoading(true);
-        setError('');
+      async function loadReviews() {
+        try {
+          setLoading(true);
+          setError('');
 
-        const user = await getCurrentUser();
+          const user = await getCurrentUser();
+          const userIdStr = String(user.id);
 
-        if (role === 'Borrower') {
-          const borrowerReviews = await getReceivedReviews('Borrower', String(user.id));
+          if (role === 'Borrower') {
+            const borrowerReviews = await getReceivedReviews('Borrower', userIdStr);
+            if (active) {
+              setReviews(borrowerReviews);
+            }
+            return;
+          }
+
+          let profileReviews: LenderReview[] = [];
+
+          if (process.env.EXPO_PUBLIC_USE_MOCK === 'true') {
+            const normalizedName = user.full_name.toLowerCase();
+
+            const profile = Object.values(MOCK_LENDERS).find((lender) =>
+              lender.fullName.toLowerCase().includes(normalizedName.split(' ')[0])
+            );
+
+            profileReviews = profile?.reviews ?? [];
+          } else {
+            try {
+              const profile = await getLenderProfile(userIdStr);
+              profileReviews = profile.reviews ?? [];
+            } catch {
+              profileReviews = [];
+            }
+          }
+
+          if (profileReviews.length === 0) {
+            const received = await getReceivedReviews('Lender', userIdStr);
+            if (received.length > 0) {
+              profileReviews = received;
+            }
+          }
+
           if (active) {
-            setReviews(borrowerReviews);
+            setReviews(profileReviews);
           }
-          return;
-        }
-
-        let profile;
-
-        if (process.env.EXPO_PUBLIC_USE_MOCK === 'true') {
-          const normalizedName = user.full_name.toLowerCase();
-
-          profile = Object.values(MOCK_LENDERS).find((lender) =>
-            lender.fullName.toLowerCase().includes(normalizedName.split(' ')[0])
-          );
-
-          if (!profile) {
-            // Fallback for lender mode
-            profile = { reviews: [] };
+        } catch (err) {
+          if (active) {
+            setError(
+              err instanceof Error
+                ? err.message
+                : 'Unable to load your reviews.'
+            );
           }
-        } else {
-          try {
-            profile = await getLenderProfile(String(user.id));
-          } catch {
-            profile = { reviews: [] };
-          }
+        } finally {
+          if (active) setLoading(false);
         }
-
-        if (active) {
-          setReviews(profile.reviews ?? []);
-        }
-      } catch (err) {
-        if (active) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : 'Unable to load your reviews.'
-          );
-        }
-      } finally {
-        if (active) setLoading(false);
       }
-    }
 
-    loadReviews();
+      loadReviews();
 
-    return () => {
-      active = false;
-    };
-  }, [role]);
+      return () => {
+        active = false;
+      };
+    }, [role])
+  );
 
   return (
     <View style={styles.container}>

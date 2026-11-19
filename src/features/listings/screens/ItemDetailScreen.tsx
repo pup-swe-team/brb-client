@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../../../theme';
 import { VerifiedLabel } from '../../../shared/components';
 import { useVerificationStatus } from '../../profile/hooks/useVerificationStatus';
-import { PublicLenderProfile, getLenderProfile } from '../../profile/services/lenderProfile';
+import { LenderReview, PublicLenderProfile, getLenderProfile } from '../../profile/services/lenderProfile';
 import { AvailabilityCalendar } from '../components/AvailabilityCalendar';
 import { BorrowRequestError, createBorrowRequest } from '../../orders/services/ordersService';
 import { ReportButton } from '../../reports/components/ReportButton';
@@ -159,17 +159,33 @@ export default function ItemDetailScreen({ navigation, route }: any) {
     };
   }, [lenderId]);
   
-  const itemReviews = (lender?.reviews ?? []).filter((review) => {
+  const listingDetailReviews: LenderReview[] = Array.isArray((detailData as any)?.reviews)
+    ? (detailData as any).reviews.map((r: any) => ({
+        id: String(r.id),
+        reviewerName: r.reviewer?.full_name || r.reviewer_name || 'Reviewer',
+        reviewerVerified: Boolean(r.reviewer?.is_verified ?? true),
+        rating: Number(r.rating || 5),
+        comment: String(r.comment || ''),
+        itemTitle: r.item_title || title,
+        date: String(r.created_at || '').slice(0, 10),
+      }))
+    : [];
+
+  const matchedLenderReviews = (lender?.reviews ?? []).filter((review) => {
+    if (!review.itemTitle) return false;
     const rTitle = review.itemTitle.trim().toLowerCase();
     const lTitle = title.trim().toLowerCase();
+    if (!rTitle || !lTitle) return false;
     return (
       rTitle === lTitle ||
-      rTitle.includes(lTitle) ||
-      lTitle.includes(rTitle)
+      (rTitle.length >= 3 && lTitle.includes(rTitle)) ||
+      (lTitle.length >= 3 && rTitle.includes(lTitle))
     );
   });
 
-  const reviews = itemReviews.length > 0 ? itemReviews : (lender?.reviews ?? []);
+  // Only display reviews for THIS specific product (FE-BUG-4101).
+  // Do NOT fall back to all lender reviews when no product reviews exist.
+  const reviews = listingDetailReviews.length > 0 ? listingDetailReviews : matchedLenderReviews;
   const reviewTotal = reviews.length;
 
   const countFor = (stars: number) =>

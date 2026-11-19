@@ -170,6 +170,8 @@ export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
     lockout: parseLockout(raw),
     declineReason,
     cancelReason,
+    review: raw.review,
+    reviews: Array.isArray(raw.reviews) ? raw.reviews : undefined,
   };
 }
 
