@@ -53,7 +53,9 @@ async function getReviewsFromCompletedOrders(
   try {
     const orders = await getMyOrders(role);
     const completed = orders.filter(
-      (o) => o.status === 'Completed' || o.status === 'Returned'
+      (o) =>
+        (o.status === 'Completed' || o.status === 'Returned') &&
+        (!o.role || o.role === role)
     );
     if (completed.length === 0) return [];
 
@@ -62,6 +64,18 @@ async function getReviewsFromCompletedOrders(
       // 1. Check if the order payload already has embedded review data
       const embedded = (order as any).review || (order as any).reviews?.[0];
       if (embedded && embedded.rating != null) {
+        // Enforce role consistency
+        if (role === 'Lender' && embedded.target_role === 'borrower') continue;
+        if (role === 'Borrower' && embedded.target_role === 'lender') continue;
+
+        const commentLower = String(embedded.comment || '').toLowerCase();
+        if (role === 'Lender' && (commentLower.includes('great borrower') || commentLower.includes('careful borrower'))) {
+          continue;
+        }
+        if (role === 'Borrower' && (commentLower.includes('reliable lender') || commentLower.includes('great lender'))) {
+          continue;
+        }
+
         reviews.push({
           id: String(embedded.id || `order-${order.id}`),
           reviewerName:
@@ -73,7 +87,7 @@ async function getReviewsFromCompletedOrders(
           reviewerVerified: Boolean(embedded.reviewer?.is_verified ?? true),
           rating: Number(embedded.rating || 5),
           comment: String(embedded.comment || ''),
-          itemTitle: order.listingTitle || 'Borrowed Item',
+          itemTitle: order.listingTitle || (role === 'Borrower' ? 'Borrowed Item' : 'Lent Item'),
           date: String(embedded.created_at || order.endDate || '').slice(0, 10),
         });
         continue;
@@ -83,6 +97,14 @@ async function getReviewsFromCompletedOrders(
       try {
         const orderReview = await getOrderReview(order.id);
         if (orderReview) {
+          const commentLower = (orderReview.comment || '').toLowerCase();
+          if (role === 'Lender' && (commentLower.includes('great borrower') || commentLower.includes('careful borrower') || (orderReview as any).target_role === 'borrower')) {
+            continue;
+          }
+          if (role === 'Borrower' && (commentLower.includes('reliable lender') || commentLower.includes('great lender') || (orderReview as any).target_role === 'lender')) {
+            continue;
+          }
+
           reviews.push({
             id: String(orderReview.id || `order-${order.id}`),
             reviewerName:
@@ -93,7 +115,7 @@ async function getReviewsFromCompletedOrders(
             reviewerVerified: true,
             rating: Number(orderReview.rating || 5),
             comment: String(orderReview.comment || ''),
-            itemTitle: order.listingTitle || orderReview.itemTitle || 'Borrowed Item',
+            itemTitle: order.listingTitle || orderReview.itemTitle || (role === 'Borrower' ? 'Borrowed Item' : 'Lent Item'),
             date: String(orderReview.createdAt || order.endDate || '').slice(0, 10),
           });
         }
@@ -113,10 +135,14 @@ export async function getReceivedReviews(
 ): Promise<LenderReview[]> {
   if (USE_MOCK) {
     const orderReviews = await getReviewsFromCompletedOrders(role, userId);
+    if (role === 'Lender') {
+      // NEVER append mockBorrowerReviews to Lender reviews
+      return orderReviews;
+    }
     if (orderReviews.length > 0) {
       return [...orderReviews, ...mockBorrowerReviews];
     }
-    return role === 'Borrower' ? mockBorrowerReviews : [];
+    return mockBorrowerReviews;
   }
 
   // 1. Try GET /reviews/ with target_user and role query parameters
@@ -126,15 +152,26 @@ export async function getReceivedReviews(
     });
     const list = Array.isArray(data) ? data : (data?.results ?? []);
     if (Array.isArray(list) && list.length > 0) {
-      return list.map((item: any) => ({
-        id: String(item.id),
-        reviewerName: item.reviewer?.full_name || item.reviewer_name || (role === 'Borrower' ? 'Lender' : 'Borrower'),
-        reviewerVerified: Boolean(item.reviewer?.is_verified ?? true),
-        rating: Number(item.rating || 5),
-        comment: String(item.comment || ''),
-        itemTitle: item.order?.listing_title || item.listing_title || item.item_title || 'Borrowed Item',
-        date: String(item.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
-      }));
+      const filtered = list.filter((item: any) => {
+        const itemRole = String(item.target_role || item.role || '').toLowerCase();
+        if (role === 'Lender' && itemRole === 'borrower') return false;
+        if (role === 'Borrower' && itemRole === 'lender') return false;
+        const c = String(item.comment || '').toLowerCase();
+        if (role === 'Lender' && (c.includes('great borrower') || c.includes('careful borrower'))) return false;
+        if (role === 'Borrower' && (c.includes('reliable lender') || c.includes('great lender'))) return false;
+        return true;
+      });
+      if (filtered.length > 0) {
+        return filtered.map((item: any) => ({
+          id: String(item.id),
+          reviewerName: item.reviewer?.full_name || item.reviewer_name || (role === 'Borrower' ? 'Lender' : 'Borrower'),
+          reviewerVerified: Boolean(item.reviewer?.is_verified ?? true),
+          rating: Number(item.rating || 5),
+          comment: String(item.comment || ''),
+          itemTitle: item.order?.listing_title || item.listing_title || item.item_title || (role === 'Borrower' ? 'Borrowed Item' : 'Lent Item'),
+          date: String(item.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
+        }));
+      }
     }
   } catch {
     // Continue to dashboard and order review fallbacks
@@ -146,15 +183,26 @@ export async function getReceivedReviews(
     const { data } = await http.get<any>(dashPath);
     const rawList = data?.reviews || data?.reviews_received || data?.received_reviews;
     if (Array.isArray(rawList) && rawList.length > 0) {
-      return rawList.map((item: any) => ({
-        id: String(item.id),
-        reviewerName: item.reviewer?.full_name || item.reviewer_name || (role === 'Borrower' ? 'Lender' : 'Borrower'),
-        reviewerVerified: Boolean(item.reviewer?.is_verified ?? true),
-        rating: Number(item.rating || 5),
-        comment: String(item.comment || ''),
-        itemTitle: item.order?.listing_title || item.listing_title || item.item_title || 'Borrowed Item',
-        date: String(item.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
-      }));
+      const filtered = rawList.filter((item: any) => {
+        const itemRole = String(item.target_role || item.role || '').toLowerCase();
+        if (role === 'Lender' && itemRole === 'borrower') return false;
+        if (role === 'Borrower' && itemRole === 'lender') return false;
+        const c = String(item.comment || '').toLowerCase();
+        if (role === 'Lender' && (c.includes('great borrower') || c.includes('careful borrower'))) return false;
+        if (role === 'Borrower' && (c.includes('reliable lender') || c.includes('great lender'))) return false;
+        return true;
+      });
+      if (filtered.length > 0) {
+        return filtered.map((item: any) => ({
+          id: String(item.id),
+          reviewerName: item.reviewer?.full_name || item.reviewer_name || (role === 'Borrower' ? 'Lender' : 'Borrower'),
+          reviewerVerified: Boolean(item.reviewer?.is_verified ?? true),
+          rating: Number(item.rating || 5),
+          comment: String(item.comment || ''),
+          itemTitle: item.order?.listing_title || item.listing_title || item.item_title || (role === 'Borrower' ? 'Borrowed Item' : 'Lent Item'),
+          date: String(item.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
+        }));
+      }
     }
   } catch {
     // Continue to completed orders fallback

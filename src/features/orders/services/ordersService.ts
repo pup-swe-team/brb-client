@@ -133,7 +133,10 @@ export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
     counterpart = raw.counterpart || lenderName || borrowerName || 'Counterpart';
   }
 
-  const role: OrderRole = defaultRole || (raw.role as OrderRole) || 'Borrower';
+  const explicitRole: OrderRole | undefined = raw.role
+    ? (String(raw.role).toLowerCase() === 'lender' ? 'Lender' : 'Borrower')
+    : undefined;
+  const role: OrderRole = explicitRole || defaultRole || 'Borrower';
   const orderNumber = raw.orderNumber || (id ? `BRB-${String(id).padStart(4, '0')}` : undefined);
   const pickupLocation = raw.pickupLocation || raw.pickup_location?.name || raw.pickup_location || raw.listing?.pickup_location?.name || '';
   const rawPrice = raw.pricePerDay ?? raw.price_per_day ?? raw.rate_per_day ?? raw.listing?.rate_per_day ?? raw.listing?.price_per_day;
@@ -218,7 +221,8 @@ export async function getMyOrders(role?: OrderRole): Promise<Order[]> {
     const { data } = await http.get<any>('/orders/', { params: role ? { role: role.toLowerCase() } : undefined });
     const list = Array.isArray(data) ? data : (data?.results ?? []);
     if (Array.isArray(list)) {
-      return list.map((item) => normalizeOrder(item, role));
+      const orders = list.map((item) => normalizeOrder(item, role));
+      return role ? orders.filter((o) => o.role === role) : orders;
     }
   } catch {
     // Fall back to the dashboard endpoints, which also trigger the automatic status updates.

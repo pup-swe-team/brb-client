@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { extractApiError } from '../../../services/http';
 import { colors, spacing } from '../../../theme';
+import { ConfirmModal } from '../../../shared/components';
+import { getCurrentUser } from '../../auth/services/authService';
 import { useVerificationStatus } from '../../profile/hooks/useVerificationStatus';
 import { CATEGORIES, CONDITIONS, PICKUP_LOCATIONS, isValidDate, todayISO } from '../constants';
 import { DatePickerModal } from '../components/DatePickerModal';
@@ -51,6 +54,46 @@ export default function AddItemScreen({ navigation, route }: any) {
   const [dropdown, setDropdown] = useState<'pickup' | null>(null);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [datePicker, setDatePicker] = useState<'from' | 'until' | null>(null);
+
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userLoading, setUserLoading] = useState(true);
+  const [flaggedModalVisible, setFlaggedModalVisible] = useState(false);
+  const [flaggedMessage, setFlaggedMessage] = useState(
+    'Your account is currently flagged. You are unable to create or edit listings at this time. Please contact BRB support for assistance.'
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getCurrentUser()
+        .then((u) => {
+          if (!active) return;
+          setCurrentUser(u);
+          const isUserFlagged =
+            u?.account_status === 'flagged' ||
+            u?.account_status === 'suspended' ||
+            u?.account_status === 'banned' ||
+            u?.lender_status === 'flagged' ||
+            u?.lender_status === 'suspended' ||
+            Boolean((u as any)?.is_flagged);
+          if (isUserFlagged) {
+            const reason =
+              (u as any)?.flagged_reason ||
+              (u as any)?.status_reason ||
+              'Your account is currently flagged. You are unable to create or edit listings at this time. Please contact BRB support for assistance.';
+            setFlaggedMessage(reason);
+            setFlaggedModalVisible(true);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (active) setUserLoading(false);
+        });
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
 
   const choosePhoto = async () => {
     if (photos.length >= 5) return Alert.alert('Photo limit reached', 'You can add up to 5 photos.');
@@ -121,7 +164,20 @@ export default function AddItemScreen({ navigation, route }: any) {
       if (editing) navigation.goBack();
       else navigation.navigate('MyListings');
     } catch (e: any) {
-      Alert.alert('Could not save', extractApiError(e));
+      const msg = extractApiError(e);
+      const isFlaggedError =
+        msg.toLowerCase().includes('flagged') ||
+        msg.toLowerCase().includes('suspended') ||
+        msg.toLowerCase().includes('banned') ||
+        (e as any)?.response?.data?.code === 'account_flagged' ||
+        (e as any)?.response?.data?.code === 'user_flagged' ||
+        (e as any)?.response?.status === 403;
+      if (isFlaggedError) {
+        setFlaggedMessage(msg || 'Your account is flagged and unable to create listings.');
+        setFlaggedModalVisible(true);
+      } else {
+        Alert.alert('Could not save', msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -142,10 +198,54 @@ export default function AddItemScreen({ navigation, route }: any) {
     </View>
   );
 
-  // Only verified users can create or edit listings.
-  if (statusLoading) {
-    return <View style={s.screen}>{header}<View style={s.gate}><ActivityIndicator color={colors.primary} /></View></View>;
+  const isFlagged =
+    currentUser?.account_status === 'flagged' ||
+    currentUser?.account_status === 'suspended' ||
+    currentUser?.account_status === 'banned' ||
+    currentUser?.lender_status === 'flagged' ||
+    currentUser?.lender_status === 'suspended' ||
+    Boolean(currentUser?.is_flagged);
+
+  // Loading state
+  if (statusLoading || userLoading) {
+    return (
+      <View style={s.screen}>
+        {header}
+        <View style={s.gate}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      </View>
+    );
   }
+
+  // Flagged gate
+  if (isFlagged) {
+    return (
+      <View style={s.screen}>
+        {header}
+        <View style={s.gate}>
+          <Ionicons name="flag-outline" size={52} color={colors.error} />
+          <Text style={s.gateTitle}>Account Flagged</Text>
+          <Text style={s.gateBody}>{flaggedMessage}</Text>
+          <Pressable
+            style={[s.postButton, s.gateButton, { backgroundColor: colors.primary }]}
+            onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Tabs', { screen: 'Home' }))}
+          >
+            <Text style={s.postText}>Go Back</Text>
+          </Pressable>
+        </View>
+        <ConfirmModal
+          visible={flaggedModalVisible}
+          variant="blocked"
+          title="Account Flagged"
+          message={flaggedMessage}
+          onCancel={() => setFlaggedModalVisible(false)}
+        />
+      </View>
+    );
+  }
+
+  // Only verified users can create or edit listings.
   if (!isVerified) {
     const copy = status === 'Pending'
       ? { title: 'Verification in review', body: 'Your ID is still being reviewed. You can create listings once you are verified.', action: '' }
@@ -307,6 +407,18 @@ export default function AddItemScreen({ navigation, route }: any) {
         setUntilDate(date);
         setErrors(e => ({ ...e, until: undefined }));
         setDatePicker(null);
+      }}
+    />
+    <ConfirmModal
+      visible={flaggedModalVisible}
+      variant="blocked"
+      title="Account Flagged"
+      message={flaggedMessage}
+      onCancel={() => {
+        setFlaggedModalVisible(false);
+        if (isFlagged && navigation.canGoBack()) {
+          navigation.goBack();
+        }
       }}
     />
   </View>;

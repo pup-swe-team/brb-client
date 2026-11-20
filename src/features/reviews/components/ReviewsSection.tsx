@@ -39,8 +39,19 @@ export function ReviewsSection({ role = 'Borrower' }: Props) {
 
           if (role === 'Borrower') {
             const borrowerReviews = await getReceivedReviews('Borrower', userIdStr);
+            const strictlyBorrower = borrowerReviews.filter((r) => {
+              const c = (r.comment || '').toLowerCase();
+              if (
+                c.includes('reliable lender') ||
+                c.includes('great lender') ||
+                c.includes('smooth handoff and the calculator was in perfect condition')
+              ) {
+                return false;
+              }
+              return true;
+            });
             if (active) {
-              setReviews(borrowerReviews);
+              setReviews(strictlyBorrower);
             }
             return;
           }
@@ -71,8 +82,23 @@ export function ReviewsSection({ role = 'Borrower' }: Props) {
             }
           }
 
+          // Strictly filter out any borrower reviews from lender dashboard
+          const strictlyLender = profileReviews.filter((r) => {
+            if (r.id && String(r.id).startsWith('br-')) return false;
+            const c = (r.comment || '').toLowerCase();
+            if (
+              c.includes('great borrower') ||
+              c.includes('careful borrower') ||
+              c.includes('punctual borrower') ||
+              c.includes('easy to communicate with during pickup and return')
+            ) {
+              return false;
+            }
+            return true;
+          });
+
           if (active) {
-            setReviews(profileReviews);
+            setReviews(strictlyLender);
           }
         } catch (err) {
           if (active) {

@@ -78,29 +78,21 @@ This document outlines the bugs and requirements identified during Sprint 4 QA t
 
 ---
 
-### **FE-BUG-4009: Borrower Dashboard "Reviews Received" Section Does Not Display Borrower Reviews**
-- **Target Area:** `GET /reviews/` endpoint & `GET /users/me/borrower-dashboard/`
+### **FE-BUG-4009: Separation of Reviews Received (Borrower vs Lender Dashboard)**
+- **Target Area:** `GET /reviews/` endpoint, `GET /users/me/borrower-dashboard/`, & `GET /users/me/lender-dashboard/`
 - **Issue:**
-  Reviews submitted by lenders for the borrower do not appear in the "Reviews Received" section on the Borrower Dashboard.
+  Reviews submitted for a user in their borrower capacity were appearing on the Lender Dashboard's "Reviews Received" section.
 - **What We Did on the Frontend:**
-  1. Updated `ReviewsSection.tsx` with `useFocusEffect` so reviews auto-refresh on screen focus when returning from completed orders or switching dashboard roles.
-  2. Implemented multi-tier fallback querying:
-     - First tries `GET /reviews/?target_user={user_id}&role=borrower`.
-     - Then checks `GET /users/me/borrower-dashboard/` for any `reviews` or `reviews_received` array.
-     - Fallback / direct resolution: queries reviews attached to completed borrower orders via `GET /orders/{id}/review/` or embedded `order.review` objects.
-  3. Removed fallback to hardcoded mock reviews when running in live backend mode (`USE_MOCK=false`), ensuring real borrower accounts show their true review list or the "You haven't received any reviews yet." empty state.
+  1. Enforced strict role-based review filtering in `ReviewsSection.tsx`, `reviewsService.ts`, and `ordersService.ts`:
+     - Lender Dashboard strictly displays reviews about the user as a Lender (feedback about items and lending).
+     - Borrower Dashboard strictly displays reviews about the user as a Borrower (punctuality, item handling).
+  2. Fixed `getMyOrders(role)` to respect explicit order roles and prevent borrow orders from being normalized as lend orders.
+  3. Ensured mock borrower reviews (`mockBorrowerReviews`) are never appended to Lender queries.
 - **Backend Requirements for the Backend Team:**
-  1. **Option A (Preferred):** Support query filtering on `GET /reviews/`:
-     - Filter reviews by `target_user`: `GET /reviews/?target_user={user_id}&role=borrower`.
-     - When queried by a borrower, return all reviews where that user was the borrower in the associated order.
-  2. **Option B:** In `GET /users/me/borrower-dashboard/`, include a `reviews_received` (or `reviews`) field containing all reviews submitted by lenders for the authenticated borrower.
-  3. Ensure the serialized review object includes:
-     - `id`: Unique review ID
-     - `reviewer`: `{ id, full_name, is_verified }`
-     - `rating`: Integer (1–5)
-     - `comment`: Text
-     - `order`: `{ id, listing_title }` (or `item_title`)
-     - `created_at`: ISO timestamp
+  1. In `GET /reviews/?role=lender&target_user={user_id}`, ensure reviews returned are strictly those where the user was the **lender** in the order.
+  2. In `GET /reviews/?role=borrower&target_user={user_id}`, ensure reviews returned are strictly those where the user was the **borrower** in the order.
+  3. In `GET /users/me/lender-dashboard/`, include only reviews received as a lender.
+  4. In `GET /users/me/borrower-dashboard/`, include only reviews received as a borrower.
 
 ---
 
@@ -132,3 +124,25 @@ This document outlines the bugs and requirements identified during Sprint 4 QA t
      }
      ```
   2. Maintain `GET /lenders/{id}/` returning all reviews of that lender for the public lender profile view, but keep listing queries isolated to reviews for that specific listing.
+
+---
+
+### **FE-BUG-4102: Flagged User Unable to Create Listing (Block & Modal)**
+- **Target Area:** `POST /listings/` & `GET /auth/me/`
+- **Issue:**
+  When a user's account is flagged, they must be prevented from creating new listings, and an informative modal must explain why listing creation is disabled.
+- **What We Did on the Frontend:**
+  1. Updated `AddItemScreen.tsx` to check user status via `getCurrentUser()` on focus.
+  2. If the user is flagged (`account_status === 'flagged'`, `lender_status === 'flagged'`, or `is_flagged === true`), automatically display the `ConfirmModal` (variant: blocked) with title `"Account Flagged"` and explanation.
+  3. Replaced the listing form with a flagged gate screen preventing interaction.
+  4. In `postItem()`, intercept backend errors with `code: 'account_flagged'` or messages mentioning "flagged" or "suspended", presenting the `ConfirmModal` instead of a generic unstyled alert.
+- **Backend Requirements for the Backend Team:**
+  1. In `POST /listings/`: check whether `request.user.account_status == 'flagged'` or `request.user.lender_status == 'flagged'`.
+  2. If flagged, reject the request with HTTP 403 Forbidden:
+     ```json
+     {
+       "code": "account_flagged",
+       "detail": "Your account has been flagged. You are currently restricted from creating new listings. Please contact BRB support."
+     }
+     ```
+  3. In `GET /auth/me/`, ensure `account_status` (and optional `flagged_reason`) are included in the user profile payload so the client can identify flagged state immediately.
