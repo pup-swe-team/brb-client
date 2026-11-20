@@ -78,16 +78,16 @@ function mapBackendListing(item: any): Listing {
   const firstPhoto = photoList.length > 0 ? photoList[0] : undefined;
 
   const rating =
-    item.lender?.rating != null
-      ? Number(item.lender.rating)
-      : item.rating != null
+    item.rating != null
       ? Number(item.rating)
+      : item.rating_average != null
+      ? Number(item.rating_average)
       : 0;
   const reviewCount =
-    item.lender?.review_count != null
-      ? Number(item.lender.review_count)
-      : item.review_count != null
+    item.review_count != null
       ? Number(item.review_count)
+      : item.reviews_count != null
+      ? Number(item.reviews_count)
       : 0;
 
   return {
