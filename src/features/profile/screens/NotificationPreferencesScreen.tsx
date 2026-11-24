@@ -1,3 +1,7 @@
+// OWNER: Lance | CP-802
+// Configure email notification preferences: preference toggles grouped by:
+// Order Updates, Messages, Reviews, Account & Verification.
+
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Switch, Text, View } from 'react-native';
 import { colors, radius, spacing, text } from '../../../theme';

@@ -56,6 +56,14 @@ import { AdminCaseScreen } from '../features/admin/screens/AdminCaseScreen';
 import NotificationsScreen from '../features/notifications/screens/NotificationsScreen';
 import ReviewFormScreen from '../features/reviews/screens/ReviewFormScreen';
 
+/* =========================================================
+   CHAT + DISPUTES (Sprint 5)
+========================================================= */
+
+import ChatListScreen from '../features/chat/screens/ChatListScreen';
+import ChatThreadScreen from '../features/chat/screens/ChatThreadScreen';
+import DisputeResponseScreen from '../features/orders/screens/DisputeResponseScreen';
+
 
 /* =========================================================
    DASHBOARD
@@ -262,22 +270,16 @@ function MainTabs() {
       />
 
       {/* =================================================
-          CHAT
-          TEMPORARY UNTIL CHAT SCREEN IS READY
+          CHAT (Sprint 5)
       ================================================= */}
 
       <Tab.Screen
         name="Chat"
+        component={ChatListScreen}
         options={{
           title: 'Chat',
         }}
-      >
-        {() => (
-          <StubScreen
-            label="Chat"
-          />
-        )}
-      </Tab.Screen>
+      />
 
       {/* =================================================
           PROFILE
@@ -334,6 +336,8 @@ const linking: LinkingOptions<RootStackParamList> = {
       VerifyIdentity: 'verify-identity',
       MyListings: 'my-listings',
       Gallery: 'gallery',
+      ChatThread: 'chat/:conversationId',
+      DisputeResponse: 'orders/:orderId/dispute-response',
     },
   },
 };
@@ -528,6 +532,19 @@ export function RootNavigator() {
         <Stack.Screen
           name="ReviewForm"
           component={ReviewFormScreen}
+        />
+
+        {/* =================================================
+            CHAT + DISPUTES (Sprint 5)
+        ================================================= */}
+
+        <Stack.Screen
+          name="ChatThread"
+          component={ChatThreadScreen}
+        />
+        <Stack.Screen
+          name="DisputeResponse"
+          component={DisputeResponseScreen}
         />
 
         {/* =================================================

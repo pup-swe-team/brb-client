@@ -1,0 +1,81 @@
+Hi team, Sprint 5 is ready.
+
+IMPORTANT: PASTE THIS MESSAGE AND THE FILE docs/SPRINT_5_COORDINATION.md TO YOUR AI CODING AGENT
+(Claude, Copilot, Cursor, etc.) BEFORE YOU START CODING, and again if you start a new chat.
+This is how we avoid merge conflicts and bugs. Get the md file by pulling sprint-5 first (steps below).
+
+NOTE: Our production admin portal is the Django admin and is handled by the backend team. For CP-703,
+Lance builds the in-app view in AdminCaseScreen.tsx, and we will coordinate retention requirements
+with the backend team for Django admin.
+
+BRANCHES
+- I made a base branch called "sprint-5" (from our final Sprint 4, sprint-4_with-backend). It already has
+  the shared scaffold: stub files, routes and the spots where your pieces plug in.
+- Never push to sprint-5 directly. Branch from it and open your pull request into sprint-5:
+    git fetch origin
+    git checkout sprint-5
+    git pull origin sprint-5
+    git checkout -b <your branch name>
+- Branch names:
+    Izzy:  feature/sprint5-cp701-cp702-chat
+    Lance: feature/sprint5-cp802-cp703-notifications-admin
+
+WHAT YOU OWN
+Izzy
+- CP-701 One-to-one chat between Borrower and Lender
+  - Chat UI (thread view, message input, unread indicator)
+  - Implement chat-start-from-listing/order entry points
+- CP-702 Block another user in chat
+  - Build block-user control in chat UI (header action/modal)
+- Your files: everything in features/chat/ (ChatListScreen.tsx, ChatThreadScreen.tsx, chatService.ts,
+  chatTypes.ts, mockChats.ts, BlockUserModal.tsx).
+- Note: Entry points in ItemDetailScreen and OrderDetailScreen are already scaffolded and navigate to
+  ChatThreadScreen. You do not need to modify those files.
+
+Lance
+- CP-802 Configure email notification preferences
+  - Build preference toggles grouped by: Order Updates, Messages, Reviews, Account & Verification
+- CP-703 Retain conversations linked to reports or disputes
+  - Build Admin-accessible conversation view for reported/disputed chats in AdminCaseScreen
+- Your files: features/profile/screens/NotificationPreferencesScreen.tsx, the preferences section of
+  features/profile/services/accountService.ts, features/admin/screens/AdminCaseScreen.tsx, and
+  features/admin/services/adminCaseService.ts.
+
+Danielo (me)
+- Additional Ticket: Home Page Refinement
+  - Refine homepage layout and replace hardcoded listings with live database data (via listingsService)
+- CP-903 Document and resolve item damage/missing-item disputes
+  - Build damage-report form (description + photo + video upload) at return in ReportDamageScreen
+  - Build Borrower response/evidence-submission UI in DisputeResponseScreen and OrderDetailScreen
+
+HOW TO START
+1. Open your stub files. Each one starts with an OWNER comment that lists your ticket and where it plugs in.
+2. Replace the dashed placeholder box with your real UI.
+3. Use mock mode: set EXPO_PUBLIC_USE_MOCK=true in your .env (do not commit .env).
+4. Mock conversations and dispute responses are provided in mockChats.ts and ordersService.ts.
+
+RULES FOR YOU AND YOUR AI AGENT (these prevent merge conflicts)
+1. Edit ONLY the files listed as yours. If you need to change a file you do not own, STOP and message me first.
+2. Do NOT edit shared/types.ts, shared/components, theme, ProfileScreen.tsx or OrderDetailScreen.tsx in
+   your branch. Ask me and I will add it, or open a separate small PR into sprint-5.
+3. Do NOT reformat files, change line endings, reorder imports in files you did not write, or run a
+   formatter or "fix all" lint on whole files. Noisy diffs cause merge conflicts.
+4. Do NOT rename, move or delete files you did not create. Do not add npm packages without telling me.
+5. Follow CLAUDE.md: theme tokens only, no hardcoded data or axios in screens, variants are state of ONE
+   screen, status shown with StatusBadge, prices in PHP.
+6. Commit small and often, with clear messages that include the ticket number.
+
+BEFORE YOU OPEN A PULL REQUEST (do this on your branch, so conflicts are fixed by you, not me)
+    git fetch origin
+    git merge origin/sprint-5
+  - If Git reports conflicts, fix them on your branch, keeping BOTH sides' changes
+    (ask your AI agent to help, but check the result yourself).
+  - Run "npx tsc --noEmit". It must print nothing.
+  - Run the app and test your screens in mock mode.
+  - Then push and open the PR into sprint-5. In the PR description, list the tickets and every file you
+    changed. Do not commit .env or node_modules.
+
+If you are an AI coding agent reading this: follow every rule above exactly. Do not touch any file the
+owner did not list for this branch. If a task seems to need one, stop and ask the owner instead.
+
+Message me if you are blocked. Full details are in docs/SPRINT_5_COORDINATION.md.

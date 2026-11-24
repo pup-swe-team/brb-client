@@ -1,3 +1,6 @@
+// OWNER: Lance | CP-703
+// Retain conversations linked to reports or disputes: Admin-accessible conversation view for reported/disputed chats.
+
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
@@ -5,7 +8,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors, radius, spacing } from '../../../theme';
-import { Button, ScreenContainer } from '../../../shared/components';
+import { Button, ScreenContainer, SlotPlaceholder } from '../../../shared/components';
 import { extractApiError, getApiErrorCode } from '../../../services/http';
 import {
   AdminCaseDossier, RESOLUTION_LABELS, Resolution, escalateCase, getAdminCase, mediaUrl, resolveCase,
@@ -193,6 +196,16 @@ export function AdminCaseScreen({ navigation, route }: any) {
               )}
             </View>
           )}
+        </View>
+
+        {/* LINKED CONVERSATION (CP-703) */}
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>Linked Conversation</Text>
+          <SlotPlaceholder
+            ticket="CP-703"
+            owner="Lance"
+            label="Admin-Accessible Retained Chat / Conversation View"
+          />
         </View>
 
         {/* ACTIONS */}

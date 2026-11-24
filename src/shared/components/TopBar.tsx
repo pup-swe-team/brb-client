@@ -4,12 +4,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../theme';
 
-export function TopBar({ title, onBack }: { title: string; onBack?: () => void }) {
+export function TopBar({
+  title,
+  onBack,
+  rightAction,
+}: {
+  title: string;
+  onBack?: () => void;
+  rightAction?: React.ReactNode;
+}) {
   return (
     <SafeAreaView edges={['top']} style={{ backgroundColor: colors.primary }}>
       <View style={s.bar}>
         {onBack ? <Pressable onPress={onBack} accessibilityLabel="Go back"><Ionicons name="chevron-back" size={24} color="#fff" /></Pressable> : null}
         <Text style={s.title}>{title}</Text>
+        {rightAction}
       </View>
     </SafeAreaView>
   );

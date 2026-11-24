@@ -604,8 +604,15 @@ export default function ItemDetailScreen({ navigation, route }: any) {
         <Pressable
           style={styles.chatButton}
           onPress={() =>
-            Alert.alert('Chat', 'Connect this button to the lender chat screen.')
+            navigation.navigate('ChatThread', {
+              recipientId: lenderId,
+              recipientName: lender?.fullName || author || 'Lender',
+              listingId: (item as any)?.id ? String((item as any).id) : undefined,
+              listingTitle: title,
+            })
           }
+          accessibilityRole="button"
+          accessibilityLabel="Chat with lender"
         >
           <Ionicons
             name="chatbubble-ellipses-outline"

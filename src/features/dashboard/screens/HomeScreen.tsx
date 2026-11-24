@@ -1,3 +1,6 @@
+// OWNER: Danielo | Additional Ticket: Home Page Refinement
+// Refine homepage layout & replace hardcoded listings with live database data.
+
 import React from 'react';
 import {
   Image,

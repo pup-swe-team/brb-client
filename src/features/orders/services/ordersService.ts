@@ -727,3 +727,24 @@ export async function submitDamageReport(
     throw new Error(errorMessage(error));
   }
 }
+
+// OWNER: Danielo | CP-903
+export async function submitDisputeResponse(
+  orderId: string,
+  description: string,
+  files: DamageEvidenceFile[],
+): Promise<{ id?: number; status: string }> {
+  if (USE_MOCK) {
+    await new Promise((r) => setTimeout(r, 500));
+    return { id: 1, status: 'response_submitted' };
+  }
+  try {
+    const form = new FormData();
+    form.append('description', description.trim());
+    for (const item of files) await appendEvidence(form, item);
+    const { data } = await http.post<any>(`/orders/${orderId}/dispute-response/`, form, { timeout: 120000 });
+    return { id: data?.id, status: String(data?.status ?? 'response_submitted') };
+  } catch (error: any) {
+    throw new Error(errorMessage(error));
+  }
+}

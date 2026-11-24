@@ -50,6 +50,17 @@ export type RootStackParamList = {
   Notifications: undefined;
   ReviewForm: { orderId: string };
 
+  // Sprint 5
+  ChatThread: {
+    conversationId?: string;
+    recipientId?: string;
+    recipientName?: string;
+    listingId?: string;
+    orderId?: string;
+    listingTitle?: string;
+  };
+  DisputeResponse: { orderId: string };
+
   SignUpMessage: undefined;
 
   VerifyEmail:
