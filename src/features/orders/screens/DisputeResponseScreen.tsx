@@ -11,8 +11,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Button, Card, ScreenContainer, SlotPlaceholder, TopBar } from '../../../shared/components';
+import { Button, Card, ScreenContainer, TopBar } from '../../../shared/components';
 import { colors, radius, spacing, text } from '../../../theme';
 import { DamageEvidenceFile, submitDisputeResponse } from '../services/ordersService';
 
@@ -88,12 +89,6 @@ export default function DisputeResponseScreen({ navigation, route }: any) {
       <TopBar title="Dispute Response" onBack={() => navigation.goBack()} />
 
       <ScreenContainer scroll>
-        <SlotPlaceholder
-          ticket="CP-903"
-          owner="Danielo"
-          label="Borrower Dispute Response & Counter-Evidence Submission"
-        />
-
         <View style={s.content}>
           <Text style={text.caption}>Order #{orderId}</Text>
           <Text style={s.heading}>Respond to Damage Claim</Text>
@@ -126,10 +121,16 @@ export default function DisputeResponseScreen({ navigation, route }: any) {
               onPress={() => selectEvidence('photo')}
             />
             {photo ? (
-              <View style={s.previewWrap}>
-                <Image source={{ uri: photo.uri }} style={s.preview} />
-                <Pressable onPress={() => setPhoto(null)}>
-                  <Text style={s.removeLink}>Remove Photo</Text>
+              <View style={s.previewContainer}>
+                <Image source={{ uri: photo.uri }} style={s.photoPreview} />
+                <View style={s.fileInfo}>
+                  <Text style={s.fileName} numberOfLines={1}>
+                    {photo.fileName || 'Selected photo'}
+                  </Text>
+                  <Text style={text.caption}>Photo attached</Text>
+                </View>
+                <Pressable onPress={() => setPhoto(null)} accessibilityLabel="Remove photo">
+                  <Ionicons name="trash-outline" size={20} color={colors.error} />
                 </Pressable>
               </View>
             ) : null}
@@ -143,14 +144,29 @@ export default function DisputeResponseScreen({ navigation, route }: any) {
               onPress={() => selectEvidence('video')}
             />
             {video ? (
-              <View style={s.previewWrap}>
-                <Text style={text.caption}>Video selected: {video.fileName || 'video.mp4'}</Text>
-                <Pressable onPress={() => setVideo(null)}>
-                  <Text style={s.removeLink}>Remove Video</Text>
+              <View style={s.previewContainer}>
+                <View style={s.videoPreview}>
+                  <Ionicons name="videocam" size={24} color={colors.primary} />
+                </View>
+                <View style={s.fileInfo}>
+                  <Text style={s.fileName} numberOfLines={1}>
+                    {video.fileName || 'Selected video'}
+                  </Text>
+                  <Text style={text.caption}>Video attached</Text>
+                </View>
+                <Pressable onPress={() => setVideo(null)} accessibilityLabel="Remove video">
+                  <Ionicons name="trash-outline" size={20} color={colors.error} />
                 </Pressable>
               </View>
             ) : null}
           </Card>
+
+          <View style={s.notice}>
+            <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
+            <Text style={s.noticeText}>
+              Your response and evidence will be recorded and attached to the case dossier for administrator review.
+            </Text>
+          </View>
 
           {error ? <Text style={s.error}>{error}</Text> : null}
 
@@ -180,8 +196,40 @@ const s = StyleSheet.create({
     padding: spacing.md,
     ...text.body,
   },
-  previewWrap: { marginTop: spacing.xs, alignItems: 'center', gap: 4 },
-  preview: { width: '100%', height: 160, borderRadius: radius.card },
-  removeLink: { ...text.caption, color: colors.error, fontWeight: '600' },
+  previewContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.bg,
+    padding: spacing.sm,
+    borderRadius: radius.card,
+    marginTop: spacing.xs,
+  },
+  photoPreview: {
+    width: 60,
+    height: 60,
+    borderRadius: radius.input,
+  },
+  videoPreview: {
+    width: 60,
+    height: 60,
+    borderRadius: radius.input,
+    backgroundColor: '#F3E8FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fileInfo: { flex: 1, gap: 2 },
+  fileName: { ...text.body, fontWeight: '600', fontSize: 13 },
+  notice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    padding: spacing.md,
+    borderRadius: radius.card,
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  noticeText: { ...text.caption, color: colors.textSecondary, flex: 1 },
   error: { ...text.caption, color: colors.error },
 });

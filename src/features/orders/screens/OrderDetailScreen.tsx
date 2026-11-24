@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 
 import {
+  Button,
   Card,
   EmptyState,
   ScreenContainer,
@@ -185,6 +186,29 @@ export default function OrderDetailScreen({ navigation, route }: any) {
                     ? `Reason: ${order.cancelReason}`
                     : 'This order was cancelled.'}
                 </Text>
+              </Card>
+            )}
+
+            {order.status === 'Disputed' && (
+              <Card style={[s.statusReasonCard, { borderLeftColor: colors.warning }]}>
+                <View style={s.statusReasonHeader}>
+                  <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
+                  <Text style={[text.title, { color: colors.warning }]}>Item Under Dispute</Text>
+                </View>
+                <Text style={text.body}>
+                  {role === 'Borrower'
+                    ? 'The lender submitted a damage or missing items report for this order. You can submit your explanation and counter-evidence.'
+                    : 'A damage report was submitted and is pending review by administrators.'}
+                </Text>
+                {role === 'Borrower' && (
+                  <View style={{ marginTop: spacing.sm }}>
+                    <Button
+                      title="Respond to Dispute"
+                      variant="secondary"
+                      onPress={() => navigation.navigate('DisputeResponse', { orderId: order.id })}
+                    />
+                  </View>
+                )}
               </Card>
             )}
 
