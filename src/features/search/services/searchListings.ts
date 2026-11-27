@@ -1,5 +1,6 @@
 import { Listing, SearchParams, SearchResult, ListingCategory } from '../types';
 import { http, USE_MOCK } from '../../../services/http';
+import { parseDurationDays } from '../../listings/constants';
 import { MOCK_LISTINGS } from './mockListings';
 
 function matchesLocation(itemLocation?: string | null, filterLocation?: string | null): boolean {
@@ -108,6 +109,14 @@ function mapBackendListing(item: any): Listing {
     availableTo: item.available_to ?? '',
     createdAt: (item.created_at ?? '').slice(0, 10),
     price: item.rate_per_day && Number(item.rate_per_day) > 0 ? `₱${item.rate_per_day}/day` : 'FREE',
+    maxDurationDays: parseDurationDays(
+      item.max_duration_days ??
+        item.max_duration ??
+        item.max_borrowing_days ??
+        item.max_borrow_days ??
+        item.max_rental_days ??
+        item.max_days,
+    ),
   };
 }
 

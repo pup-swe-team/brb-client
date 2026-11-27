@@ -24,6 +24,7 @@ export type Listing = {
   imageUrl?: string;
   photos?: string[];
   description?: string;
+  maxDurationDays?: number;
 };
 
 export type SearchFilters = {
