@@ -106,7 +106,9 @@ export default function ChatThreadScreen({ navigation, route }: any) {
     try {
       const sent = await sendMessage(conversationId, messageText);
 
-      setMessages((previous) => [...previous, sent]);
+      setMessages((previous) =>
+        previous.some((m) => m.id === sent.id) ? previous : [...previous, sent],
+      );
       setInputText('');
     } catch (error) {
       console.warn('[ChatThread] Failed to send message:', error);

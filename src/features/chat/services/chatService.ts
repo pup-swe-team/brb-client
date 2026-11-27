@@ -61,7 +61,7 @@ export async function getMessages(
 ): Promise<ChatMessage[]> {
   if (USE_MOCK) {
     await new Promise((resolve) => setTimeout(resolve, 150));
-    return mockMessages[conversationId] || [];
+    return [...(mockMessages[conversationId] || [])];
   }
 
   try {
@@ -117,7 +117,7 @@ export async function sendMessage(
       read: true,
     };
 
-    mockMessages[conversationId].push(newMessage);
+    mockMessages[conversationId] = [...mockMessages[conversationId], newMessage];
 
     const conversation = mockConversations.find(
       (item) => item.id === conversationId,
