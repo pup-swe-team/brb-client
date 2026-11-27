@@ -41,6 +41,8 @@ function mapReview(review: any): LenderReview {
     date: String(
       review.created_at ?? review.date ?? ''
     ).slice(0, 10),
+    target_role: review.target_role || review.role,
+    role: review.target_role || review.role,
   };
 }
 

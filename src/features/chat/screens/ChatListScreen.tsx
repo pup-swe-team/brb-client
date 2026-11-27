@@ -20,6 +20,7 @@ import {
   ScreenContainer,
   TopBar,
 } from '../../../shared/components';
+import { AffiliationBadge } from '../../../shared/components/VerifiedLabel';
 import { ChatConversation } from '../services/chatTypes';
 import { getConversations } from '../services/chatService';
 
@@ -94,6 +95,7 @@ export default function ChatListScreen() {
       conversationId: conversation.id,
       recipientId: conversation.participantId,
       recipientName: conversation.participantName,
+      recipientAffiliation: conversation.participantAffiliation,
       listingId: conversation.listingId,
       listingTitle: conversation.listingTitle,
       orderId: conversation.orderId,
@@ -121,9 +123,14 @@ export default function ChatListScreen() {
 
       <View style={styles.convInfo}>
         <View style={styles.row}>
-          <Text style={styles.name} numberOfLines={1}>
-            {item.participantName}
-          </Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.name} numberOfLines={1}>
+              {item.participantName}
+            </Text>
+            {item.participantAffiliation ? (
+              <AffiliationBadge affiliation={item.participantAffiliation} compact />
+            ) : null}
+          </View>
 
           <View style={styles.messageMeta}>
             <Text style={styles.timestamp}>
@@ -305,9 +312,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
   },
+  nameRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minWidth: 0,
+  },
   name: {
     ...text.title,
-    flex: 1,
+    flexShrink: 1,
   },
   messageMeta: {
     alignItems: 'flex-end',

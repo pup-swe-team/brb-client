@@ -55,6 +55,7 @@ export type RootStackParamList = {
     conversationId?: string;
     recipientId?: string;
     recipientName?: string;
+    recipientAffiliation?: string;
     listingId?: string;
     orderId?: string;
     listingTitle?: string;

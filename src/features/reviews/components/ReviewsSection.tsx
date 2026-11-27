@@ -41,6 +41,8 @@ export function ReviewsSection({ role = 'Borrower' }: Props) {
           if (role === 'Borrower') {
             const borrowerReviews = await getReceivedReviews('Borrower', userIdStr);
             const strictlyBorrower = borrowerReviews.filter((r) => {
+              if (r.target_role && r.target_role.toLowerCase() !== 'borrower') return false;
+              if (r.role && r.role.toLowerCase() !== 'borrower') return false;
               const c = (r.comment || '').toLowerCase();
               if (
                 c.includes('reliable lender') ||
@@ -68,24 +70,22 @@ export function ReviewsSection({ role = 'Borrower' }: Props) {
 
             profileReviews = profile?.reviews ?? [];
           } else {
-            try {
-              const profile = await getLenderProfile(userIdStr);
-              profileReviews = profile.reviews ?? [];
-            } catch {
-              profileReviews = [];
-            }
-          }
-
-          if (profileReviews.length === 0) {
-            const received = await getReceivedReviews('Lender', userIdStr);
-            if (received.length > 0) {
-              profileReviews = received;
+            profileReviews = await getReceivedReviews('Lender', userIdStr);
+            if (profileReviews.length === 0) {
+              try {
+                const profile = await getLenderProfile(userIdStr);
+                profileReviews = profile.reviews ?? [];
+              } catch {
+                profileReviews = [];
+              }
             }
           }
 
           // Strictly filter out any borrower reviews from lender dashboard
           const strictlyLender = profileReviews.filter((r) => {
             if (r.id && String(r.id).startsWith('br-')) return false;
+            if (r.target_role && r.target_role.toLowerCase() !== 'lender') return false;
+            if (r.role && r.role.toLowerCase() !== 'lender') return false;
             const c = (r.comment || '').toLowerCase();
             if (
               c.includes('great borrower') ||

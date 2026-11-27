@@ -184,13 +184,47 @@ export async function confirmEmailChange(uid: string, token: string): Promise<vo
   await http.post('/auth/email-change/confirm/', { uid, token });
 }
 
+function normalizeNotificationPrefsResponse(raw: any): NotificationPrefs {
+  const source = raw?.channels && typeof raw.channels === 'object' ? raw.channels : raw || {};
+  const fallbackOrderEmail =
+    typeof raw?.order_updates === 'boolean' ? raw.order_updates : true;
+  const fallbackByKey: Record<string, boolean> = {
+    requests: fallbackOrderEmail,
+    handover: fallbackOrderEmail,
+    overdue: fallbackOrderEmail,
+    messages: typeof raw?.messages === 'boolean' ? raw.messages : true,
+    reviews: typeof raw?.reviews === 'boolean' ? raw.reviews : true,
+    security: true,
+  };
+
+  const result: NotificationPrefs = {};
+  for (const cat of NOTIFICATION_CATEGORIES) {
+    if (cat.locked) {
+      result[cat.key] = { push: true, email: true };
+      continue;
+    }
+    const entry = source[cat.key];
+    if (entry && typeof entry === 'object') {
+      result[cat.key] = {
+        push: typeof entry.push === 'boolean' ? entry.push : true,
+        email: typeof entry.email === 'boolean' ? entry.email : fallbackByKey[cat.key],
+      };
+    } else if (typeof entry === 'boolean') {
+      result[cat.key] = { push: true, email: entry };
+    } else {
+      result[cat.key] = { push: true, email: fallbackByKey[cat.key] };
+    }
+  }
+  return result;
+}
+
 export async function getNotificationPrefs(): Promise<NotificationPrefs> {
   if (USE_MOCK) {
     await delay(250);
     return JSON.parse(JSON.stringify(mockPrefs));
   }
-  const { data } = await http.get<NotificationPrefs>('/auth/notification-preferences/');
-  return data;
+  const { data } = await http.get<any>('/auth/notification-preferences/');
+  return normalizeNotificationPrefsResponse(data);
 }
 
 export async function saveNotificationPrefs(prefs: NotificationPrefs): Promise<void> {
@@ -199,7 +233,16 @@ export async function saveNotificationPrefs(prefs: NotificationPrefs): Promise<v
     mockPrefs = JSON.parse(JSON.stringify(prefs));
     return;
   }
-  await http.put('/auth/notification-preferences/', prefs);
+  const payload: NotificationPrefs = {};
+  for (const cat of NOTIFICATION_CATEGORIES) {
+    payload[cat.key] = cat.locked
+      ? { push: true, email: true }
+      : {
+          push: Boolean(prefs[cat.key]?.push ?? true),
+          email: Boolean(prefs[cat.key]?.email ?? true),
+        };
+  }
+  await http.put('/auth/notification-preferences/', payload);
 }
 
 // Open orders or requests that stop an account from being deactivated.

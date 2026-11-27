@@ -9,12 +9,14 @@ export interface ChatMessage {
   text: string;
   createdAt: string;
   read: boolean;
+  isMine?: boolean;
 }
 
 export interface ChatConversation {
   id: string;
   participantId: string;
   participantName: string;
+  participantAffiliation?: string;
   participantAvatar?: string;
   lastMessage?: string;
   lastMessageAt?: string;
@@ -24,6 +26,8 @@ export interface ChatConversation {
   orderId?: string;
   isBlocked?: boolean;
   blockedByMe?: boolean;
+  canBlock?: boolean;
+  blockDisabledReason?: string | null;
 }
 
 export interface SendMessagePayload {

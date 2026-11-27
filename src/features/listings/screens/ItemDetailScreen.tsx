@@ -645,6 +645,7 @@ export default function ItemDetailScreen({ navigation, route }: any) {
             navigation.navigate('ChatThread', {
               recipientId: lenderId,
               recipientName: lender?.fullName || author || 'Lender',
+              recipientAffiliation: lender?.affiliation || (item as any)?.affiliation,
               listingId: (item as any)?.id ? String((item as any).id) : undefined,
               listingTitle: title,
             })

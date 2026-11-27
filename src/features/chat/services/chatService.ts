@@ -14,6 +14,65 @@ import {
   mockMessages,
 } from './mockChats';
 
+function mapConversation(
+  item: any,
+  fallbacks?: {
+    participantId?: string;
+    participantName?: string;
+    participantAffiliation?: string;
+    listingId?: string;
+    listingTitle?: string;
+    orderId?: string;
+  },
+): ChatConversation {
+  return {
+    id: String(item.id || item.conversation_id),
+    participantId: String(
+      item.participant_id || item.other_user?.id || fallbacks?.participantId || '',
+    ),
+    participantName:
+      item.participant_name ||
+      item.other_user?.full_name ||
+      fallbacks?.participantName ||
+      'User',
+    participantAffiliation:
+      item.participant_affiliation ||
+      item.other_user?.affiliation ||
+      fallbacks?.participantAffiliation ||
+      undefined,
+    participantAvatar:
+      item.participant_avatar ||
+      item.other_user?.photo ||
+      item.other_user?.avatar ||
+      undefined,
+    lastMessage:
+      item.last_message?.text ||
+      item.last_message?.content ||
+      (typeof item.last_message === 'string' ? item.last_message : undefined),
+    lastMessageAt:
+      item.last_message?.created_at ||
+      item.last_message?.sent_at ||
+      item.updated_at ||
+      undefined,
+    unreadCount: Number(item.unread_count || 0),
+    listingId: item.listing_id
+      ? String(item.listing_id)
+      : item.listing?.id
+      ? String(item.listing.id)
+      : fallbacks?.listingId,
+    listingTitle: item.listing_title || item.listing?.title || fallbacks?.listingTitle || undefined,
+    orderId: item.order_id
+      ? String(item.order_id)
+      : item.order?.id
+      ? String(item.order.id)
+      : fallbacks?.orderId,
+    isBlocked: Boolean(item.is_blocked),
+    blockedByMe: Boolean(item.blocked_by_me ?? item.is_blocked_by_me),
+    canBlock: typeof item.can_block === 'boolean' ? item.can_block : undefined,
+    blockDisabledReason: item.block_disabled_reason || null,
+  };
+}
+
 // Retrieve all conversations.
 export async function getConversations(): Promise<ChatConversation[]> {
   if (USE_MOCK) {
@@ -26,33 +85,26 @@ export async function getConversations(): Promise<ChatConversation[]> {
     }));
   }
 
-  try {
-    const { data } = await http.get('/chats/');
-    const list = Array.isArray(data) ? data : data?.results || [];
+  const { data } = await http.get('/chats/');
+  const list = Array.isArray(data) ? data : data?.results || [];
 
-    return list.map((item: any) => ({
-      id: String(item.id || item.conversation_id),
-      participantId: String(
-        item.participant_id || item.other_user?.id || '',
-      ),
-      participantName:
-        item.participant_name || item.other_user?.full_name || 'User',
-      participantAvatar:
-        item.participant_avatar || item.other_user?.avatar || undefined,
-      lastMessage: item.last_message?.text || item.last_message || undefined,
-      lastMessageAt:
-        item.last_message?.created_at || item.updated_at || undefined,
-      unreadCount: Number(item.unread_count || 0),
-      listingId: item.listing_id ? String(item.listing_id) : undefined,
-      listingTitle: item.listing_title || item.listing?.title || undefined,
-      orderId: item.order_id ? String(item.order_id) : undefined,
-      isBlocked: Boolean(item.is_blocked),
-      blockedByMe: Boolean(item.blocked_by_me),
-    }));
-  } catch (error) {
-    console.warn('[chatService] Failed to fetch conversations:', error);
-    return mockConversations;
+  return list.map((item: any) => mapConversation(item));
+}
+
+// Retrieve metadata (participant affiliation, block eligibility) for one conversation.
+export async function getConversation(conversationId: string): Promise<ChatConversation | null> {
+  if (USE_MOCK) {
+    const existing = mockConversations.find((item) => item.id === conversationId);
+    if (!existing) return null;
+    return {
+      ...existing,
+      isBlocked: mockBlockedUserIds.includes(existing.participantId),
+      blockedByMe: mockBlockedUserIds.includes(existing.participantId),
+    };
   }
+
+  const { data } = await http.get(`/chats/${conversationId}/`);
+  return mapConversation(data);
 }
 
 // Retrieve messages for one conversation.
@@ -64,29 +116,25 @@ export async function getMessages(
     return [...(mockMessages[conversationId] || [])];
   }
 
-  try {
-    const { data } = await http.get(
-      `/chats/${conversationId}/messages/`,
-    );
+  const { data } = await http.get(
+    `/chats/${conversationId}/messages/`,
+  );
 
-    const list = Array.isArray(data) ? data : data?.results || [];
+  const list = Array.isArray(data) ? data : data?.results || [];
 
-    return list.map((message: any) => ({
-      id: String(message.id),
-      conversationId: String(message.conversation_id || conversationId),
-      senderId: String(
-        message.sender_id || message.sender?.id || '',
-      ),
-      senderName:
-        message.sender_name || message.sender?.full_name || 'User',
-      text: message.text || message.content || '',
-      createdAt: message.created_at || new Date().toISOString(),
-      read: Boolean(message.read || message.is_read),
-    }));
-  } catch (error) {
-    console.warn('[chatService] Failed to fetch messages:', error);
-    return mockMessages[conversationId] || [];
-  }
+  return list.map((message: any) => ({
+    id: String(message.id),
+    conversationId: String(message.conversation_id || conversationId),
+    senderId: String(
+      message.sender_id || message.sender?.id || '',
+    ),
+    senderName:
+      message.sender_name || message.sender?.full_name || 'User',
+    text: message.text || message.content || '',
+    createdAt: message.created_at || message.sent_at || new Date().toISOString(),
+    read: Boolean(message.read || message.is_read),
+    isMine: typeof message.is_mine === 'boolean' ? message.is_mine : undefined,
+  }));
 }
 
 // Send a message.
@@ -141,9 +189,10 @@ export async function sendMessage(
     conversationId: String(data.conversation_id || conversationId),
     senderId: String(data.sender_id || data.sender?.id || 'me'),
     senderName: data.sender_name || 'You',
-    text: data.text || trimmedText,
-    createdAt: data.created_at || new Date().toISOString(),
+    text: data.text || data.content || trimmedText,
+    createdAt: data.created_at || data.sent_at || new Date().toISOString(),
     read: true,
+    isMine: true,
   };
 }
 
@@ -197,20 +246,13 @@ export async function startConversation(
     ...(payload.initialMessage ? { initial_message: payload.initialMessage } : {}),
   });
 
-  return {
-    id: String(data.id),
-    participantId: String(data.participant_id || payload.participantId || ''),
-    participantName:
-      data.participant_name || payload.participantName || 'User',
-    unreadCount: 0,
-    listingId: data.listing_id ? String(data.listing_id) : payload.listingId,
-    listingTitle: data.listing_title || payload.listingTitle,
-    orderId: data.order_id ? String(data.order_id) : payload.orderId,
-    lastMessage: data.last_message?.text,
-    lastMessageAt: data.last_message?.created_at,
-    isBlocked: false,
-    blockedByMe: false,
-  };
+  return mapConversation(data, {
+    participantId: payload.participantId,
+    participantName: payload.participantName,
+    listingId: payload.listingId,
+    listingTitle: payload.listingTitle,
+    orderId: payload.orderId,
+  });
 }
 
 // Check whether a user is blocked.

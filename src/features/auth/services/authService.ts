@@ -88,10 +88,19 @@ export async function verifyEmail(uid: string, token: string): Promise<string> {
   return data.message;
 }
 
+let currentUserPromise: Promise<AuthUser> | null = null;
+
 export async function getCurrentUser(): Promise<AuthUser> {
   if (USE_MOCK) return MOCK_USER;
-  const { data } = await http.get<AuthUser>('/auth/me/');
-  return data;
+  if (!currentUserPromise) {
+    currentUserPromise = http
+      .get<AuthUser>('/auth/me/')
+      .then((res) => res.data)
+      .finally(() => {
+        currentUserPromise = null;
+      });
+  }
+  return currentUserPromise;
 }
 
 export async function resendVerificationEmail(email: string): Promise<string> {

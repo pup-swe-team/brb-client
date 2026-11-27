@@ -18,9 +18,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, text } from '../../../theme';
 import { ScreenContainer, TopBar } from '../../../shared/components';
+import { AffiliationBadge } from '../../../shared/components/VerifiedLabel';
+import { extractApiError, USE_MOCK } from '../../../services/http';
+import { getCurrentUser } from '../../auth/services/authService';
 import { ChatMessage } from '../services/chatTypes';
 import {
   blockUser,
+  getConversation,
   getMessages,
   isUserBlocked,
   markConversationRead,
@@ -52,6 +56,7 @@ export default function ChatThreadScreen({ navigation, route }: any) {
     conversationId: initialConversationId,
     recipientName = 'Conversation',
     recipientId = '',
+    recipientAffiliation: initialRecipientAffiliation,
     listingId,
     orderId,
     listingTitle,
@@ -61,6 +66,12 @@ export default function ChatThreadScreen({ navigation, route }: any) {
     initialConversationId,
   );
   const [resolvedRecipientId, setResolvedRecipientId] = useState<string>(recipientId);
+  const [resolvedRecipientAffiliation, setResolvedRecipientAffiliation] = useState<string | undefined>(
+    initialRecipientAffiliation,
+  );
+  const [canBlock, setCanBlock] = useState(true);
+  const [blockDisabledReason, setBlockDisabledReason] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -75,8 +86,19 @@ export default function ChatThreadScreen({ navigation, route }: any) {
 
     const loadConversation = async () => {
       try {
+        if (!USE_MOCK) {
+          getCurrentUser()
+            .then((user) => {
+              if (active && user?.id != null) {
+                setCurrentUserId(String(user.id));
+              }
+            })
+            .catch(() => {});
+        }
+
         let convId = initialConversationId as string | undefined;
         let targetRecipientId = recipientId as string;
+        let startedBlocked = false;
 
         if (!convId) {
           const started = await startConversation({
@@ -87,6 +109,7 @@ export default function ChatThreadScreen({ navigation, route }: any) {
             orderId,
           });
           convId = started.id;
+          startedBlocked = Boolean(started.isBlocked);
           if (!targetRecipientId && started.participantId) {
             targetRecipientId = started.participantId;
           }
@@ -95,19 +118,36 @@ export default function ChatThreadScreen({ navigation, route }: any) {
             if (targetRecipientId) {
               setResolvedRecipientId(targetRecipientId);
             }
+            if (started.participantAffiliation) {
+              setResolvedRecipientAffiliation(started.participantAffiliation);
+            }
+            if (typeof started.canBlock === 'boolean') {
+              setCanBlock(started.canBlock);
+              setBlockDisabledReason(started.blockDisabledReason || null);
+            }
           }
         }
 
-        const [messageData, blocked] = await Promise.all([
+        const [messageData, blocked, conversationMeta] = await Promise.all([
           getMessages(convId),
           targetRecipientId
             ? isUserBlocked(targetRecipientId)
             : Promise.resolve(false),
+          initialConversationId
+            ? getConversation(convId).catch(() => null)
+            : Promise.resolve(null),
         ]);
 
         if (active) {
           setMessages(messageData);
-          setIsBlocked(blocked);
+          setIsBlocked(blocked || startedBlocked || Boolean(conversationMeta?.isBlocked));
+          if (conversationMeta?.participantAffiliation) {
+            setResolvedRecipientAffiliation(conversationMeta.participantAffiliation);
+          }
+          if (typeof conversationMeta?.canBlock === 'boolean') {
+            setCanBlock(conversationMeta.canBlock);
+            setBlockDisabledReason(conversationMeta.blockDisabledReason || null);
+          }
         }
 
         await markConversationRead(convId);
@@ -176,7 +216,7 @@ export default function ChatThreadScreen({ navigation, route }: any) {
       setBlockModalVisible(false);
     } catch (error) {
       console.warn('[ChatThread] Failed to block user:', error);
-      Alert.alert('Unable to block user', 'Please try again.');
+      Alert.alert('Unable to block user', extractApiError(error) || 'Please try again.');
     } finally {
       setBlocking(false);
     }
@@ -230,7 +270,11 @@ export default function ChatThreadScreen({ navigation, route }: any) {
   };
 
   const renderMessage = ({ item }: { item: ChatMessage }) => {
-    const isMe = item.senderId === 'me' || item.senderName === 'You';
+    const isMe =
+      Boolean(item.isMine) ||
+      item.senderId === 'me' ||
+      item.senderName === 'You' ||
+      (currentUserId !== null && item.senderId === currentUserId);
 
     return (
       <View
@@ -274,6 +318,11 @@ export default function ChatThreadScreen({ navigation, route }: any) {
     >
       <TopBar
         title={recipientName}
+        titleAccessory={
+          resolvedRecipientAffiliation ? (
+            <AffiliationBadge affiliation={resolvedRecipientAffiliation} compact />
+          ) : undefined
+        }
         onBack={() => navigation.goBack()}
         rightAction={
           <Pressable
@@ -300,7 +349,12 @@ export default function ChatThreadScreen({ navigation, route }: any) {
 
           <View style={styles.menu}>
             <Text style={styles.menuHeading}>USER ACTIONS</Text>
-            <Text style={styles.menuSubtitle}>{recipientName}</Text>
+            <View style={styles.menuSubtitleRow}>
+              <Text style={styles.menuSubtitle}>{recipientName}</Text>
+              {resolvedRecipientAffiliation ? (
+                <AffiliationBadge affiliation={resolvedRecipientAffiliation} compact />
+              ) : null}
+            </View>
 
             <Pressable
               style={styles.menuItem}
@@ -339,24 +393,35 @@ export default function ChatThreadScreen({ navigation, route }: any) {
             </Pressable>
 
             <Pressable
-              style={styles.menuItem}
+              style={[
+                styles.menuItem,
+                !isBlocked && !canBlock && styles.menuItemDisabled,
+              ]}
               onPress={() => handleMenuAction(isBlocked ? 'unblock' : 'block')}
-              disabled={blocking}
+              disabled={blocking || (!isBlocked && !canBlock)}
             >
               <Ionicons
                 name={isBlocked ? 'lock-open-outline' : 'ban-outline'}
                 size={16}
-                color={colors.error}
+                color={!isBlocked && !canBlock ? colors.textMuted : colors.error}
               />
-              <Text style={styles.blockMenuText}>
+              <Text
+                style={[
+                  styles.blockMenuText,
+                  !isBlocked && !canBlock && styles.menuTextMuted,
+                ]}
+              >
                 {isBlocked ? 'Unblock User' : 'Block User'}
               </Text>
               <Ionicons
                 name="chevron-forward"
                 size={14}
-                color={colors.error}
+                color={!isBlocked && !canBlock ? colors.textMuted : colors.error}
               />
             </Pressable>
+            {!isBlocked && !canBlock && blockDisabledReason ? (
+              <Text style={styles.blockDisabledHint}>{blockDisabledReason}</Text>
+            ) : null}
           </View>
         </>
       ) : null}
@@ -528,16 +593,25 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontWeight: '700',
   },
+  menuSubtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
   menuSubtitle: {
     ...text.caption,
     color: colors.textSecondary,
-    marginBottom: spacing.xs,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     paddingVertical: spacing.sm,
+  },
+  menuItemDisabled: {
+    opacity: 0.55,
   },
   menuText: {
     ...text.caption,
@@ -549,6 +623,14 @@ const styles = StyleSheet.create({
     color: colors.error,
     flex: 1,
     fontWeight: '600',
+  },
+  menuTextMuted: {
+    color: colors.textMuted,
+  },
+  blockDisabledHint: {
+    ...text.caption,
+    color: colors.textMuted,
+    marginTop: 2,
   },
   listingCard: {
     flexDirection: 'row',
