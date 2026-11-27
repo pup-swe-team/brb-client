@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme';
@@ -23,11 +23,18 @@ function availabilityLabel(from?: string, to?: string): string {
 type Props = { listing: Listing; onPress?: (listing: Listing) => void };
 
 export function ListingResultCard({ listing, onPress }: Props) {
+  const [imageError, setImageError] = useState(false);
+  const imageUri = listing.imageUrl || listing.photos?.[0];
+
   return (
     <Pressable style={s.card} onPress={() => onPress?.(listing)} accessibilityRole="button">
       <View style={s.icon}>
-        {(listing.imageUrl || listing.photos?.[0]) ? (
-          <Image source={{ uri: listing.imageUrl || listing.photos?.[0] }} style={s.cardImage} />
+        {imageUri && !imageError ? (
+          <Image
+            source={{ uri: imageUri }}
+            style={s.cardImage}
+            onError={() => setImageError(true)}
+          />
         ) : (
           <Ionicons name={CATEGORY_ICON[listing.category]} size={22} color={colors.primary} />
         )}

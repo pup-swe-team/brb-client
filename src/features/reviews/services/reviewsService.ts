@@ -295,6 +295,8 @@ function mapRawToLenderReview(
     ? `order-${fallbackOrder.id}-${role.toLowerCase()}`
     : `review-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
+  const targetRole = extractTargetRole(raw);
+
   return {
     id: String(raw?.id ?? fallbackId),
     reviewerName:
@@ -317,6 +319,8 @@ function mapRawToLenderReview(
     date:
       String(raw?.created_at ?? raw?.createdAt ?? raw?.date ?? fallbackOrder?.endDate ?? '').slice(0, 10) ||
       new Date().toISOString().slice(0, 10),
+    target_role: targetRole,
+    role: targetRole,
   };
 }
 

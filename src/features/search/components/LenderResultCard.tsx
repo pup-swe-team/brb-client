@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme';
@@ -13,10 +13,16 @@ function initials(name: string) {
 type Props = { lender: LenderSummary; onPress?: (lender: LenderSummary) => void };
 
 export function LenderResultCard({ lender, onPress }: Props) {
+  const [avatarError, setAvatarError] = useState(false);
+
   return (
     <Pressable style={s.card} onPress={() => onPress?.(lender)} accessibilityRole="button">
-      {lender.photoUrl ? (
-        <Image source={{ uri: lender.photoUrl }} style={s.avatar} />
+      {lender.photoUrl && !avatarError ? (
+        <Image
+          source={{ uri: lender.photoUrl }}
+          style={s.avatar}
+          onError={() => setAvatarError(true)}
+        />
       ) : (
         <View style={s.avatar}>
           <Text style={s.avatarText}>{initials(lender.fullName)}</Text>

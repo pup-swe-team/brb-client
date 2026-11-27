@@ -44,4 +44,4 @@ yarn-error.*
 !.env.example
 
 # EAS / APK build files
-eas.json
+/eas.json

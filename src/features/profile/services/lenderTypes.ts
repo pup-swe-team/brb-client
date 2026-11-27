@@ -7,6 +7,8 @@ export type LenderReview = {
   comment: string;
   itemTitle: string;
   date: string; // YYYY-MM-DD
+  target_role?: string;
+  role?: string;
 };
 
 export type LenderListing = {
