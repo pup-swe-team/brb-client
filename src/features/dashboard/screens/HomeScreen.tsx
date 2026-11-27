@@ -1,7 +1,7 @@
 // OWNER: Danielo | Additional Ticket: Home Page Refinement
 // Refine homepage layout & replace hardcoded listings with live database data.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -15,9 +15,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { colors, radius, spacing, text } from '../../../theme';
 import { VerifiedLabel, AffiliationType } from '../../../shared/components';
+import { extractApiError } from '../../../services/http';
 import { searchListings } from '../../search/services/searchListings';
 import { EMPTY_FILTERS, Listing } from '../../search/types';
 
@@ -44,10 +46,6 @@ const categories = [
   },
 ];
 
-/* =========================================================
-   FALLBACK MOCK LISTINGS (Used when offline or DB empty)
-========================================================= */
-
 interface DisplayListing {
   id: string;
   title: string;
@@ -63,74 +61,8 @@ interface DisplayListing {
   category?: string;
   availableFrom?: string;
   availableTo?: string;
+  maxDurationDays?: number;
 }
-
-const fallbackListings: DisplayListing[] = [
-  {
-    id: '1',
-    title: 'Laptop (i5 8th Gen)',
-    owner: 'Jen Sta. Ana',
-    affiliation: 'Student',
-    verified: true,
-    location: 'PUP CEA, Sta. Mesa, Manila',
-    price: 'FREE',
-    rating: '4.12',
-    image: 'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=600',
-    photos: [
-      'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=900',
-      'https://images.unsplash.com/photo-1593113646773-028c64a8f1b8?w=900',
-    ],
-    category: 'Electronics',
-  },
-  {
-    id: '2',
-    title: 'Concepts of Programming...',
-    owner: 'Lawrence Aragon',
-    affiliation: 'Faculty',
-    verified: true,
-    location: 'South, 5th Floor, PUP Main',
-    price: '₱15 / day',
-    rating: '4.80',
-    image: 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=600',
-    category: 'Textbooks',
-  },
-  {
-    id: '3',
-    title: 'T-Square',
-    owner: 'J.B. Sucat',
-    affiliation: 'Student',
-    verified: true,
-    location: 'PUP CEA, Sta. Mesa, Manila',
-    price: '₱10 / day',
-    rating: '3.96',
-    image: 'https://images.unsplash.com/photo-1516979187457-637abb4f9353?w=600',
-    category: 'Lab Equipment',
-  },
-  {
-    id: '4',
-    title: 'Erlenmeyer Flask (250ml)',
-    owner: 'Kim Santos',
-    affiliation: 'Faculty',
-    verified: true,
-    location: 'South, 6th Floor, PUP Main',
-    price: '₱5 / day',
-    rating: '3.88',
-    image: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=600',
-    category: 'Lab Equipment',
-  },
-  {
-    id: '5',
-    title: 'Yantok (For Arnis)',
-    owner: 'Shan Adalman',
-    affiliation: 'Staff',
-    verified: true,
-    location: 'CHK, PUP Main',
-    price: 'FREE',
-    rating: '4.20',
-    image: 'https://images.unsplash.com/photo-1593113646773-028c64a8f1b8?w=600',
-    category: 'School Supplies',
-  },
-];
 
 type HomeFilter = 'all' | 'available' | 'free' | 'rent';
 
@@ -142,11 +74,12 @@ export default function HomeScreen({ navigation }: any) {
   const [items, setItems] = useState<DisplayListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<HomeFilter>('all');
 
   // Convert API Listing to DisplayListing
-  const mapApiListing = (l: Listing): DisplayListing => {
+  const mapApiListing = useCallback((l: Listing): DisplayListing => {
     const isFree = !l.price || l.price.toUpperCase().includes('FREE') || l.price === '₱0' || l.price === '0';
     const displayPrice = isFree
       ? 'FREE'
@@ -163,66 +96,66 @@ export default function HomeScreen({ navigation }: any) {
       verified: l.ownerVerified,
       location: l.location || 'PUP Main Campus',
       price: displayPrice,
-      rating: l.rating > 0 ? l.rating.toFixed(2) : '5.00',
+      rating: l.rating > 0 ? l.rating.toFixed(1) : 'New',
       image: l.imageUrl || l.photos?.[0] || 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=600',
       photos: l.photos,
       category: l.category,
       availableFrom: l.availableFrom,
       availableTo: l.availableTo,
+      maxDurationDays: l.maxDurationDays,
     };
-  };
+  }, []);
 
   const loadListings = useCallback(async () => {
     try {
+      setLoadError(null);
       const res = await searchListings({
         keyword: '',
         sort: 'newest',
         page: 1,
-        pageSize: 20,
+        pageSize: 50,
         filters: EMPTY_FILTERS,
       });
 
-      if (res.items && res.items.length > 0) {
-        setItems(res.items.map(mapApiListing));
-      } else {
-        setItems(fallbackListings);
-      }
-    } catch {
-      setItems(fallbackListings);
+      setItems((res.items ?? []).map(mapApiListing));
+    } catch (err) {
+      setLoadError(extractApiError(err));
+      setItems([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [mapApiListing]);
 
-  useEffect(() => {
-    let active = true;
-    searchListings({
-      keyword: '',
-      sort: 'newest',
-      page: 1,
-      pageSize: 20,
-      filters: EMPTY_FILTERS,
-    })
-      .then((res) => {
-        if (!active) return;
-        if (res.items && res.items.length > 0) {
-          setItems(res.items.map(mapApiListing));
-        } else {
-          setItems(fallbackListings);
-        }
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      searchListings({
+        keyword: '',
+        sort: 'newest',
+        page: 1,
+        pageSize: 50,
+        filters: EMPTY_FILTERS,
       })
-      .catch(() => {
-        if (active) setItems(fallbackListings);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+        .then((res) => {
+          if (!active) return;
+          setLoadError(null);
+          setItems((res.items ?? []).map(mapApiListing));
+        })
+        .catch((err) => {
+          if (!active) return;
+          setLoadError(extractApiError(err));
+          setItems([]);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
 
-    return () => {
-      active = false;
-    };
-  }, []);
+      return () => {
+        active = false;
+      };
+    }, [mapApiListing]),
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -285,6 +218,7 @@ export default function HomeScreen({ navigation }: any) {
         category: item.category || 'General',
         availableFrom: item.availableFrom,
         availableTo: item.availableTo,
+        maxDurationDays: item.maxDurationDays,
       },
     });
   };
@@ -410,20 +344,43 @@ export default function HomeScreen({ navigation }: any) {
 
           {loading ? (
             <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
-          ) : filteredListings.length === 0 ? (
+          ) : loadError ? (
             <View style={styles.emptyState}>
-              <Ionicons name="search-outline" size={40} color={colors.textMuted} />
-              <Text style={styles.emptyTitle}>No listings found</Text>
-              <Text style={styles.emptySubtitle}>Try adjusting your filter or search query.</Text>
+              <Ionicons name="cloud-offline-outline" size={40} color={colors.textMuted} />
+              <Text style={styles.emptyTitle}>Couldn&apos;t load listings</Text>
+              <Text style={styles.emptySubtitle}>{loadError}</Text>
               <Pressable
                 style={styles.resetButton}
                 onPress={() => {
-                  setSearchQuery('');
-                  setActiveFilter('all');
+                  setLoading(true);
+                  loadListings();
                 }}
               >
-                <Text style={styles.resetButtonText}>Reset filters</Text>
+                <Text style={styles.resetButtonText}>Try Again</Text>
               </Pressable>
+            </View>
+          ) : filteredListings.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="search-outline" size={40} color={colors.textMuted} />
+              <Text style={styles.emptyTitle}>
+                {items.length === 0 ? 'No listings available yet' : 'No listings found'}
+              </Text>
+              <Text style={styles.emptySubtitle}>
+                {items.length === 0
+                  ? 'Listings posted by verified lenders will appear here.'
+                  : 'Try adjusting your filter or search query.'}
+              </Text>
+              {items.length > 0 ? (
+                <Pressable
+                  style={styles.resetButton}
+                  onPress={() => {
+                    setSearchQuery('');
+                    setActiveFilter('all');
+                  }}
+                >
+                  <Text style={styles.resetButtonText}>Reset filters</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : (
             <View style={styles.grid}>

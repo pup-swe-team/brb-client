@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -123,13 +122,27 @@ export default function ItemDetailScreen({ navigation, route }: any) {
     .filter((range: ReservedDateRange) => range.startDate && range.endDate);
   // Lender's max rental length (days), set on the Create Listing form. Missing = no limit.
   const maxDurationDays = parseDurationDays(
-    detailData?.max_duration_days ?? detailData?.max_duration ?? item.maxDurationDays ?? item.duration,
+    detailData?.max_duration_days ??
+      detailData?.max_duration ??
+      detailData?.max_borrowing_days ??
+      detailData?.max_borrow_days ??
+      detailData?.max_rental_days ??
+      detailData?.max_days ??
+      detailData?.borrowing_limit_days ??
+      detailData?.availability_windows?.[0]?.max_duration_days ??
+      item.maxDurationDays ??
+      item.max_duration_days ??
+      item.max_borrowing_days ??
+      item.duration,
   );
   // Latest return date allowed for a given check-out date: capped by the lender's max duration and
   // by the next reservation, so a rental can never run across someone else's dates.
   const latestReturnFor = (start: string): string | undefined => {
     let limit: string | undefined;
     if (maxDurationDays) limit = addDaysISO(start, maxDurationDays - 1);
+    if (availableTo && (!limit || availableTo < limit)) {
+      limit = availableTo;
+    }
     const nextReserved = reservedRanges
       .map((range) => range.startDate)
       .filter((date) => date > start)
@@ -254,6 +267,19 @@ export default function ItemDetailScreen({ navigation, route }: any) {
         setReturnDate('');
       }
     } else {
+      if (checkout) {
+        const latest = latestReturnFor(checkout);
+        if (date < checkout || (latest && date > latest)) {
+          setCalendarVisible(false);
+          showRequestError(
+            'Maximum rental period exceeded',
+            maxDurationDays
+              ? `The lender allows up to ${formatDurationDays(maxDurationDays)} per rental. Please choose a shorter date range.`
+              : 'The selected return date is outside the allowed borrowing range.',
+          );
+          return;
+        }
+      }
       setReturnDate(date);
     }
     setCalendarVisible(false);
@@ -279,6 +305,13 @@ export default function ItemDetailScreen({ navigation, route }: any) {
     }
     if (!checkout || !returnDate) {
       showRequestError('Choose your dates', 'Pick a check-out and return date before sending a request.');
+      return;
+    }
+    if (maxDurationDays && inclusiveDays(checkout, returnDate) > maxDurationDays) {
+      showRequestError(
+        'Maximum rental period exceeded',
+        `The lender allows up to ${formatDurationDays(maxDurationDays)} per rental. Please choose a shorter date range.`,
+      );
       return;
     }
     setOverlay('request');
@@ -483,6 +516,11 @@ export default function ItemDetailScreen({ navigation, route }: any) {
           </View>
           <View style={styles.dateCard}>
             <Text style={styles.dateTitle}>{isFree ? "When do you need to borrow it?" : "When do you need it?"}</Text>
+            {maxDurationDays ? (
+              <Text style={styles.dateLabel}>
+                Max borrowing period: {formatDurationDays(maxDurationDays)}
+              </Text>
+            ) : null}
             <View style={styles.dateRow}>
               <Pressable
                 style={styles.dateBox}

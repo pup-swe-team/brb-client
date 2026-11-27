@@ -92,7 +92,16 @@ function mapBackendToManaged(item: any): ManagedListing {
     lendingType: isRent ? 'For Rent' : 'Free Lending',
     price,
     // Lender's max rental length. Falls back to the old default if the API does not send it yet.
-    duration: formatDurationDays(parseDurationDays(item.max_duration_days ?? item.max_duration) ?? 5),
+    duration: formatDurationDays(
+      parseDurationDays(
+        item.max_duration_days ??
+          item.max_duration ??
+          item.max_borrowing_days ??
+          item.max_borrow_days ??
+          item.max_rental_days ??
+          item.max_days,
+      ) ?? 5,
+    ),
     availability: hasWindow ? 'Available from' : 'Available now',
     fromDate,
     untilDate,
