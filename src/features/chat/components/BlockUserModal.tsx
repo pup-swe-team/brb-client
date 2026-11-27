@@ -1,14 +1,17 @@
-// OWNER: Izzy | CP-702
-// Block User confirmation modal in chat.
+
+ // OWNER: Izzy | CP-702
+// Block User confirmation modal.
 
 import React from 'react';
 import { Modal, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, text } from '../../../theme';
-import { Button, SlotPlaceholder } from '../../../shared/components';
+import { Button } from '../../../shared/components';
 
 interface BlockUserModalProps {
   visible: boolean;
   userName?: string;
+  loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -16,31 +19,56 @@ interface BlockUserModalProps {
 export default function BlockUserModal({
   visible,
   userName = 'this user',
+  loading = false,
   onConfirm,
   onCancel,
 }: BlockUserModalProps) {
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={s.overlay}>
-        <View style={s.card}>
-          <SlotPlaceholder ticket="CP-702" owner="Izzy" label="Block User Modal" />
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+    >
+      <View style={styles.overlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.iconCircle}>
+            <Ionicons
+              name="ban-outline"
+              size={spacing.xl}
+              color={colors.warning}
+            />
+          </View>
 
-          <Text style={s.title}>Block {userName}?</Text>
-          <Text style={s.body}>
-            They will no longer be able to send you messages or start conversations with you.
+          <Text style={styles.title}>
+            Block {userName}?
           </Text>
 
-          <View style={s.actions}>
-            <Button
-              title="Block User"
-              variant="destructive"
-              onPress={onConfirm}
-            />
-            <Button
-              title="Cancel"
-              variant="secondary"
-              onPress={onCancel}
-            />
+          <Text style={styles.message}>
+            You won't get messages from this user, and they
+            won't be able to message you.
+          </Text>
+
+          <View style={styles.actions}>
+            <View style={styles.buttonContainer}>
+              <Button
+                 title="Cancel"
+                 variant="secondary"
+                 onPress={onCancel}
+                 disabled={loading}
+                 compact
+/>
+            </View>
+
+            <View style={styles.buttonContainer}>
+              <Button
+                 title="Block"
+                 variant="destructive"
+                 onPress={onConfirm}
+                 loading={loading}
+                 compact
+              />
+            </View>
           </View>
         </View>
       </View>
@@ -48,23 +76,47 @@ export default function BlockUserModal({
   );
 }
 
-const s = StyleSheet.create({
+const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
+    alignItems: 'center',
     padding: spacing.lg,
   },
-  card: {
+  modalCard: {
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 400,
     backgroundColor: colors.white,
     borderRadius: radius.card,
     padding: spacing.lg,
+    alignItems: 'center',
     gap: spacing.md,
   },
-  title: { ...text.title, fontSize: 17, color: colors.text },
-  body: { ...text.body, color: colors.textSecondary, fontSize: 14 },
-  actions: { gap: spacing.sm, marginTop: spacing.xs },
+  iconCircle: {
+    width: spacing.xxxl + spacing.lg,
+    height: spacing.xxxl + spacing.lg,
+    borderRadius: radius.pill,
+    backgroundColor: colors.goldSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    ...text.title,
+    textAlign: 'center',
+  },
+  message: {
+    ...text.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  actions: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  buttonContainer: {
+    flex: 1,
+  },
 });

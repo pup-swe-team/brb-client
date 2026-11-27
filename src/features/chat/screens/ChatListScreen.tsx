@@ -1,110 +1,282 @@
-// OWNER: Izzy | CP-701
-// Chat tab screen: Displays conversation threads with counterparties, unread badges, and search/filter.
 
-import React, { useEffect, useState } from 'react';
+// OWNER: Izzy | CP-701
+// Chat tab screen: Displays searchable conversations, latest messages, and unread indicators.
+
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { colors, radius, spacing, text } from '../../../theme';
-import { ScreenContainer, SlotPlaceholder, TopBar } from '../../../shared/components';
+import {
+  EmptyState,
+  ScreenContainer,
+  TopBar,
+} from '../../../shared/components';
 import { ChatConversation } from '../services/chatTypes';
 import { getConversations } from '../services/chatService';
 
+function formatTimestamp(value?: string) {
+  if (!value) return '';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+
+  if (isToday) {
+    return date.toLocaleTimeString([], {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  }
+
+  return date.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 export default function ChatListScreen() {
   const navigation = useNavigation<any>();
+
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     getConversations()
-      .then(setConversations)
-      .finally(() => setLoading(false));
+      .then((data) => {
+        setConversations(data);
+        setError(false);
+      })
+      .catch(() => {
+        setError(true);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, []);
 
-  const openThread = (conv: ChatConversation) => {
+  const filteredConversations = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    return [...conversations]
+      .filter((conversation) => {
+        if (!query) return true;
+
+        return (
+          conversation.participantName.toLowerCase().includes(query) ||
+          conversation.listingTitle?.toLowerCase().includes(query) ||
+          conversation.lastMessage?.toLowerCase().includes(query)
+        );
+      })
+      .sort((a, b) => {
+        const dateA = new Date(a.lastMessageAt || 0).getTime();
+        const dateB = new Date(b.lastMessageAt || 0).getTime();
+
+        return dateB - dateA;
+      });
+  }, [conversations, searchQuery]);
+
+  const openThread = (conversation: ChatConversation) => {
     navigation.navigate('ChatThread', {
-      conversationId: conv.id,
-      recipientId: conv.participantId,
-      recipientName: conv.participantName,
-      listingId: conv.listingId,
-      orderId: conv.orderId,
+      conversationId: conversation.id,
+      recipientId: conversation.participantId,
+      recipientName: conversation.participantName,
+      listingId: conversation.listingId,
+      listingTitle: conversation.listingTitle,
+      orderId: conversation.orderId,
     });
   };
 
+  const renderConversation = ({
+    item,
+  }: {
+    item: ChatConversation;
+  }) => (
+    <Pressable
+      style={styles.convCard}
+      onPress={() => openThread(item)}
+      accessibilityRole="button"
+      accessibilityLabel={`Chat with ${item.participantName}`}
+    >
+      <View style={styles.avatar}>
+        <Ionicons
+          name="person"
+          size={20}
+          color={colors.white}
+        />
+      </View>
+
+      <View style={styles.convInfo}>
+        <View style={styles.row}>
+          <Text style={styles.name} numberOfLines={1}>
+            {item.participantName}
+          </Text>
+
+          <View style={styles.messageMeta}>
+            <Text style={styles.timestamp}>
+              {formatTimestamp(item.lastMessageAt)}
+            </Text>
+
+            {item.unreadCount > 0 ? (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        {item.listingTitle ? (
+          <Text style={styles.listingTag} numberOfLines={1}>
+            Re: {item.listingTitle}
+          </Text>
+        ) : null}
+
+        <Text style={styles.lastMsg} numberOfLines={1}>
+          {item.lastMessage || 'No messages yet'}
+        </Text>
+      </View>
+
+      <Ionicons
+        name="chevron-forward"
+        size={18}
+        color={colors.textMuted}
+      />
+    </Pressable>
+  );
+
   return (
-    <View style={s.container}>
+    <View style={styles.container}>
       <TopBar title="Messages" />
 
       <ScreenContainer>
-        <SlotPlaceholder
-          ticket="CP-701"
-          owner="Izzy"
-          label="Chat Thread List & Unread Indicators"
-        />
+        <View style={styles.content}>
+          {/* SEARCH BAR */}
+          <View style={styles.searchContainer}>
+            <Ionicons
+              name="search-outline"
+              size={20}
+              color={colors.textMuted}
+            />
 
-        {loading ? (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
-        ) : (
-          <FlatList
-            data={conversations}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={s.listContent}
-            renderItem={({ item }) => (
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search conversations..."
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+
+            {searchQuery.length > 0 ? (
               <Pressable
-                style={s.convCard}
-                onPress={() => openThread(item)}
+                onPress={() => setSearchQuery('')}
                 accessibilityRole="button"
-                accessibilityLabel={`Chat with ${item.participantName}`}
+                accessibilityLabel="Clear search"
+                hitSlop={spacing.sm}
               >
-                <View style={s.avatar}>
-                  <Ionicons name="person" size={20} color={colors.white} />
-                </View>
-                <View style={s.convInfo}>
-                  <View style={s.row}>
-                    <Text style={s.name}>{item.participantName}</Text>
-                    {item.unreadCount > 0 ? (
-                      <View style={s.badge}>
-                        <Text style={s.badgeText}>{item.unreadCount}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  {item.listingTitle ? (
-                    <Text style={s.listingTag} numberOfLines={1}>
-                      Re: {item.listingTitle}
-                    </Text>
-                  ) : null}
-                  <Text style={s.lastMsg} numberOfLines={1}>
-                    {item.lastMessage || 'No messages yet'}
-                  </Text>
-                </View>
+                <Ionicons
+                  name="close-circle"
+                  size={20}
+                  color={colors.textMuted}
+                />
               </Pressable>
-            )}
-            ListEmptyComponent={
-              <View style={s.empty}>
-                <Ionicons name="chatbubbles-outline" size={48} color={colors.textMuted} />
-                <Text style={s.emptyText}>No messages yet.</Text>
-                <Text style={s.emptySubtext}>
-                  Inquire on a listing or order to chat with borrowers and lenders.
-                </Text>
-              </View>
-            }
-          />
-        )}
+            ) : null}
+          </View>
+
+          {/* CONVERSATION LIST */}
+          {loading ? (
+            <ActivityIndicator
+              color={colors.primary}
+              style={styles.loader}
+            />
+          ) : error ? (
+            <EmptyState
+              icon="alert-circle-outline"
+              title="Unable to load messages"
+              message="Please try again later."
+            />
+          ) : (
+            <FlatList
+              data={filteredConversations}
+              keyExtractor={(item) => item.id}
+              renderItem={renderConversation}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
+                <EmptyState
+                  icon="chatbubbles-outline"
+                  title={
+                    searchQuery.trim()
+                      ? 'No matching conversations'
+                      : 'No messages yet'
+                  }
+                  message={
+                    searchQuery.trim()
+                      ? 'Try searching with another name or listing.'
+                      : 'Inquire on a listing or order to chat with borrowers and lenders.'
+                  }
+                />
+              }
+            />
+          )}
+        </View>
       </ScreenContainer>
     </View>
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  listContent: { paddingVertical: spacing.md, gap: spacing.sm },
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  content: {
+    flex: 1,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: radius.input,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+    marginVertical: spacing.md,
+    minHeight: spacing.xxxl + spacing.sm,
+  },
+  searchInput: {
+  flex: 1,
+  paddingVertical: spacing.sm,
+  ...text.body,
+  color: colors.text,
+},
+  loader: {
+    marginTop: spacing.xl,
+  },
+  listContent: {
+    flexGrow: 1,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
   convCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -116,29 +288,56 @@ const s = StyleSheet.create({
     gap: spacing.md,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: spacing.xxxl + spacing.sm,
+    height: spacing.xxxl + spacing.sm,
+    borderRadius: radius.pill,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  convInfo: { flex: 1, gap: 2 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { ...text.title, fontSize: 15 },
-  listingTag: { ...text.caption, color: colors.primary, fontWeight: '600' },
-  lastMsg: { ...text.body, color: colors.textSecondary, fontSize: 13 },
+  convInfo: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  name: {
+    ...text.title,
+    flex: 1,
+  },
+  messageMeta: {
+    alignItems: 'flex-end',
+    gap: spacing.xs,
+  },
+  timestamp: {
+    ...text.caption,
+    color: colors.textMuted,
+  },
+  listingTag: {
+    ...text.caption,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  lastMsg: {
+    ...text.body,
+    color: colors.textSecondary,
+  },
   badge: {
     backgroundColor: colors.primary,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
+    borderRadius: radius.pill,
+    minWidth: spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs / 2,
   },
-  badgeText: { color: colors.white, fontSize: 11, fontWeight: '700' },
-  empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xxl, gap: spacing.sm },
-  emptyText: { ...text.title, color: colors.textSecondary },
-  emptySubtext: { ...text.caption, color: colors.textMuted, textAlign: 'center', maxWidth: 260 },
+  badgeText: {
+    ...text.caption,
+    color: colors.white,
+    fontWeight: '700',
+  },
 });
