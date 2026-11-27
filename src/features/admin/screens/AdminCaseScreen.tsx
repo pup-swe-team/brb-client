@@ -8,11 +8,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors, radius, spacing } from '../../../theme';
-import { Button, ScreenContainer, SlotPlaceholder } from '../../../shared/components';
+import { Button, ScreenContainer } from '../../../shared/components';
 import { extractApiError, getApiErrorCode } from '../../../services/http';
 import {
   AdminCaseDossier, RESOLUTION_LABELS, Resolution, escalateCase, getAdminCase, mediaUrl, resolveCase,
 } from '../services/adminCaseService';
+import { CaseConversation } from '../components/CaseConversation';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function fmtDate(d: string) {
@@ -198,13 +199,13 @@ export function AdminCaseScreen({ navigation, route }: any) {
           )}
         </View>
 
-        {/* LINKED CONVERSATION (CP-703) */}
+                {/* LINKED CONVERSATION */}
         <View style={s.section}>
           <Text style={s.sectionTitle}>Linked Conversation</Text>
-          <SlotPlaceholder
-            ticket="CP-703"
-            owner="Lance"
-            label="Admin-Accessible Retained Chat / Conversation View"
+          <CaseConversation
+            caseId={String(c.id)}
+            borrowerName={borrower.full_name}
+            lenderName={lender.full_name}
           />
         </View>
 
