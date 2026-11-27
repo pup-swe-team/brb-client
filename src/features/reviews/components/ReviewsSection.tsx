@@ -14,6 +14,7 @@ import { MOCK_LENDERS } from '../../profile/services/mockLenders';
 import { LenderReview } from '../../profile/services/lenderTypes';
 import { LenderReviewCard } from '../../profile/components/LenderReviewCard';
 import { getReceivedReviews } from '../services/reviewsService';
+import { USE_MOCK } from '../../../services/http';
 import { colors, spacing } from '../../../theme';
 
 type Props = {
@@ -58,7 +59,7 @@ export function ReviewsSection({ role = 'Borrower' }: Props) {
 
           let profileReviews: LenderReview[] = [];
 
-          if (process.env.EXPO_PUBLIC_USE_MOCK === 'true') {
+          if (USE_MOCK) {
             const normalizedName = user.full_name.toLowerCase();
 
             const profile = Object.values(MOCK_LENDERS).find((lender) =>
