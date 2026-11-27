@@ -66,8 +66,6 @@ export default function ChatThreadScreen({ navigation, route }: any) {
   useEffect(() => {
     let active = true;
 
-    setLoading(true);
-
     const loadConversation = async () => {
       try {
         const [messageData, blocked] = await Promise.all([

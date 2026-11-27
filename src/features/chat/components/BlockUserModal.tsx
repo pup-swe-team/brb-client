@@ -45,8 +45,8 @@ export default function BlockUserModal({
           </Text>
 
           <Text style={styles.message}>
-            You won't get messages from this user, and they
-            won't be able to message you.
+            You won&apos;t get messages from this user, and they
+            won&apos;t be able to message you.
           </Text>
 
           <View style={styles.actions}>

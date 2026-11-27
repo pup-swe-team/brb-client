@@ -44,12 +44,13 @@ export function CaseConversation({ caseId, borrowerName, lenderName }: Props) {
 
   useEffect(() => {
     let active = true;
-    setMessages(null);
-    setError(null);
 
     getCaseConversation(caseId)
       .then((data) => {
-        if (active) setMessages(data);
+        if (active) {
+          setError(null);
+          setMessages(data);
+        }
       })
       .catch((e) => {
         if (active) setError(extractApiError(e));
@@ -64,7 +65,15 @@ export function CaseConversation({ caseId, borrowerName, lenderName }: Props) {
     return (
       <View style={s.card}>
         <Text style={s.errorText}>{error}</Text>
-        <Button title="Try again" variant="secondary" onPress={() => setAttempt((n) => n + 1)} />
+        <Button
+          title="Try again"
+          variant="secondary"
+          onPress={() => {
+            setMessages(null);
+            setError(null);
+            setAttempt((n) => n + 1);
+          }}
+        />
       </View>
     );
   }

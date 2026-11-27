@@ -16,13 +16,44 @@ export type AccountProfile = {
 
 export type NotificationPrefs = Record<string, { push: boolean; email: boolean }>;
 
-export const NOTIFICATION_CATEGORIES: { key: string; label: string; description: string; locked?: boolean }[] = [
+export type NotificationCategory = {
+  key: string;
+  label: string;
+  description: string;
+  locked?: boolean;
+};
+
+export type NotificationGroup = {
+  title: string;
+  categories: NotificationCategory[];
+};
+
+export const NOTIFICATION_CATEGORIES: NotificationCategory[] = [
   { key: 'requests', label: 'Request updates', description: 'Requests sent, confirmed or declined.' },
   { key: 'handover', label: 'Handover and return', description: 'Pickup codes and return reminders.' },
   { key: 'overdue', label: 'Overdue alerts', description: 'Items that are late or unreturned.' },
   { key: 'messages', label: 'Chat messages', description: 'New messages from other users.' },
   { key: 'reviews', label: 'Reviews', description: 'When someone reviews you.' },
   { key: 'security', label: 'Account and security', description: 'Password, email and sign-in changes.', locked: true },
+];
+
+export const NOTIFICATION_GROUPS: NotificationGroup[] = [
+  {
+    title: 'Order Updates',
+    categories: NOTIFICATION_CATEGORIES.filter((c) => ['requests', 'handover', 'overdue'].includes(c.key)),
+  },
+  {
+    title: 'Messages',
+    categories: NOTIFICATION_CATEGORIES.filter((c) => c.key === 'messages'),
+  },
+  {
+    title: 'Reviews',
+    categories: NOTIFICATION_CATEGORIES.filter((c) => c.key === 'reviews'),
+  },
+  {
+    title: 'Account & Verification',
+    categories: NOTIFICATION_CATEGORIES.filter((c) => c.key === 'security'),
+  },
 ];
 
 export class DeactivationBlockedError extends Error {
