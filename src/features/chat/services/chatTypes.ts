@@ -32,8 +32,10 @@ export interface SendMessagePayload {
 }
 
 export interface StartConversationPayload {
-  participantId: string;
+  participantId?: string;
+  participantName?: string;
   listingId?: string;
+  listingTitle?: string;
   orderId?: string;
   initialMessage?: string;
 }

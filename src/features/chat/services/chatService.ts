@@ -156,19 +156,27 @@ export async function startConversation(
 
     const existing = mockConversations.find(
       (conversation) =>
-        conversation.participantId === payload.participantId &&
-        (!payload.listingId ||
-          conversation.listingId === payload.listingId),
+        (payload.orderId && conversation.orderId === payload.orderId) ||
+        (payload.participantId &&
+          conversation.participantId === payload.participantId &&
+          (!payload.listingId ||
+            conversation.listingId === payload.listingId)) ||
+        (!payload.participantId &&
+          payload.participantName &&
+          conversation.participantName.toLowerCase() ===
+            payload.participantName.toLowerCase()),
     );
 
     if (existing) return existing;
 
     const newConversation: ChatConversation = {
-      id: `c_${Date.now()}`,
-      participantId: payload.participantId,
-      participantName: 'Lender / Borrower',
+      id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      participantId:
+        payload.participantId || `u_${Date.now().toString(36)}`,
+      participantName: payload.participantName || 'Lender / Borrower',
       unreadCount: 0,
       listingId: payload.listingId,
+      listingTitle: payload.listingTitle,
       orderId: payload.orderId,
       lastMessage: payload.initialMessage || 'Started conversation',
       lastMessageAt: new Date().toISOString(),
@@ -177,24 +185,27 @@ export async function startConversation(
     };
 
     mockConversations.unshift(newConversation);
+    mockMessages[newConversation.id] = [];
 
     return newConversation;
   }
 
   const { data } = await http.post('/chats/', {
-    participant_id: payload.participantId,
-    listing_id: payload.listingId,
-    order_id: payload.orderId,
-    initial_message: payload.initialMessage,
+    ...(payload.participantId ? { participant_id: payload.participantId } : {}),
+    ...(payload.listingId ? { listing_id: payload.listingId } : {}),
+    ...(payload.orderId ? { order_id: payload.orderId } : {}),
+    ...(payload.initialMessage ? { initial_message: payload.initialMessage } : {}),
   });
 
   return {
     id: String(data.id),
-    participantId: String(data.participant_id || payload.participantId),
-    participantName: data.participant_name || 'User',
+    participantId: String(data.participant_id || payload.participantId || ''),
+    participantName:
+      data.participant_name || payload.participantName || 'User',
     unreadCount: 0,
-    listingId: data.listing_id || payload.listingId,
-    orderId: data.order_id || payload.orderId,
+    listingId: data.listing_id ? String(data.listing_id) : payload.listingId,
+    listingTitle: data.listing_title || payload.listingTitle,
+    orderId: data.order_id ? String(data.order_id) : payload.orderId,
     lastMessage: data.last_message?.text,
     lastMessageAt: data.last_message?.created_at,
     isBlocked: false,

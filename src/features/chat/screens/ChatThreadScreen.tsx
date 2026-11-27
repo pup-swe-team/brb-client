@@ -25,6 +25,7 @@ import {
   isUserBlocked,
   markConversationRead,
   sendMessage,
+  startConversation,
   unblockUser,
 } from '../services/chatService';
 import BlockUserModal from '../components/BlockUserModal';
@@ -48,12 +49,18 @@ function formatMessageTime(value: string) {
 
 export default function ChatThreadScreen({ navigation, route }: any) {
   const {
-    conversationId = 'c1',
+    conversationId: initialConversationId,
     recipientName = 'Conversation',
     recipientId = '',
+    listingId,
+    orderId,
     listingTitle,
   } = route?.params || {};
 
+  const [activeConversationId, setActiveConversationId] = useState<string | undefined>(
+    initialConversationId,
+  );
+  const [resolvedRecipientId, setResolvedRecipientId] = useState<string>(recipientId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -68,10 +75,33 @@ export default function ChatThreadScreen({ navigation, route }: any) {
 
     const loadConversation = async () => {
       try {
+        let convId = initialConversationId as string | undefined;
+        let targetRecipientId = recipientId as string;
+
+        if (!convId) {
+          const started = await startConversation({
+            participantId: targetRecipientId || undefined,
+            participantName: recipientName,
+            listingId,
+            listingTitle,
+            orderId,
+          });
+          convId = started.id;
+          if (!targetRecipientId && started.participantId) {
+            targetRecipientId = started.participantId;
+          }
+          if (active) {
+            setActiveConversationId(convId);
+            if (targetRecipientId) {
+              setResolvedRecipientId(targetRecipientId);
+            }
+          }
+        }
+
         const [messageData, blocked] = await Promise.all([
-          getMessages(conversationId),
-          recipientId
-            ? isUserBlocked(recipientId)
+          getMessages(convId),
+          targetRecipientId
+            ? isUserBlocked(targetRecipientId)
             : Promise.resolve(false),
         ]);
 
@@ -79,6 +109,8 @@ export default function ChatThreadScreen({ navigation, route }: any) {
           setMessages(messageData);
           setIsBlocked(blocked);
         }
+
+        await markConversationRead(convId);
       } catch (error) {
         console.warn('[ChatThread] Failed to load conversation:', error);
       } finally {
@@ -89,12 +121,11 @@ export default function ChatThreadScreen({ navigation, route }: any) {
     };
 
     loadConversation();
-    markConversationRead(conversationId);
 
     return () => {
       active = false;
     };
-  }, [conversationId, recipientId]);
+  }, [initialConversationId, recipientId, recipientName, listingId, listingTitle, orderId]);
 
   const handleSend = async () => {
     const messageText = inputText.trim();
@@ -104,7 +135,23 @@ export default function ChatThreadScreen({ navigation, route }: any) {
     setSending(true);
 
     try {
-      const sent = await sendMessage(conversationId, messageText);
+      let convId = activeConversationId;
+      if (!convId) {
+        const started = await startConversation({
+          participantId: resolvedRecipientId || undefined,
+          participantName: recipientName,
+          listingId,
+          listingTitle,
+          orderId,
+        });
+        convId = started.id;
+        setActiveConversationId(convId);
+        if (!resolvedRecipientId && started.participantId) {
+          setResolvedRecipientId(started.participantId);
+        }
+      }
+
+      const sent = await sendMessage(convId, messageText);
 
       setMessages((previous) =>
         previous.some((m) => m.id === sent.id) ? previous : [...previous, sent],
@@ -119,12 +166,12 @@ export default function ChatThreadScreen({ navigation, route }: any) {
   };
 
   const handleConfirmBlock = async () => {
-    if (!recipientId || blocking) return;
+    if (!resolvedRecipientId || blocking) return;
 
     setBlocking(true);
 
     try {
-      await blockUser(recipientId);
+      await blockUser(resolvedRecipientId);
       setIsBlocked(true);
       setBlockModalVisible(false);
     } catch (error) {
@@ -136,12 +183,12 @@ export default function ChatThreadScreen({ navigation, route }: any) {
   };
 
   const handleUnblock = async () => {
-    if (!recipientId || blocking) return;
+    if (!resolvedRecipientId || blocking) return;
 
     setBlocking(true);
 
     try {
-      await unblockUser(recipientId);
+      await unblockUser(resolvedRecipientId);
       setIsBlocked(false);
       setMenuVisible(false);
     } catch (error) {
