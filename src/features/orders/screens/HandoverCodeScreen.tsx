@@ -16,22 +16,27 @@ import {
   TopBar,
 } from '../../../shared/components';
 import { colors, spacing, text } from '../../../theme';
-import type { Order, OrderRole } from '../../../shared/types';
+import type { Order } from '../../../shared/types';
+import { getCurrentUser } from '../../auth/services/authService';
 import {
   confirmHandover,
   generateHandoverCode,
   getOrGenerateHandoverCode,
   getOrder,
   OrderCodeError,
+  resolveOrderRole,
 } from '../services/ordersService';
 import { formatLockoutTime, useCodeLockout } from '../hooks/useCodeLockout';
 
 type Mode = 'show' | 'enter';
 
 export default function HandoverCodeScreen({ navigation, route }: any) {
-  const { orderId, mode } = route.params as { orderId: string; mode: Mode };
-  // Lender displays the code; borrower enters it.
-  const orderRole: OrderRole = mode === 'show' ? 'Lender' : 'Borrower';
+  const { orderId, mode: routeMode = 'enter' } = (route?.params || {}) as {
+    orderId: string;
+    mode?: Mode;
+  };
+  const [resolvedMode, setResolvedMode] = useState<Mode | null>(null);
+  const mode = resolvedMode ?? routeMode;
 
   const [order, setOrder] = useState<Order | null>(null);
   const [code, setCode] = useState('');
@@ -64,30 +69,38 @@ export default function HandoverCodeScreen({ navigation, route }: any) {
   const loadScreen = useCallback(async () => {
     setLoading(true);
     setError('');
+    setCode('');
+    setExpiresAt('');
 
-    // Re-read the server lockout state whenever the screen mounts or regains focus.
-    if (mode === 'enter') {
-      setEnteredCode('');
-      await refreshLockout();
-    }
+    const fallbackRole = routeMode === 'show' ? 'Lender' : 'Borrower';
 
     try {
-      const currentOrder = await getOrder(orderId, orderRole);
+      const [currentOrder, currentUser] = await Promise.all([
+        getOrder(orderId, fallbackRole),
+        getCurrentUser().catch(() => null),
+      ]);
+      const actualRole = resolveOrderRole(currentOrder, currentUser, fallbackRole);
+      const effectiveMode: Mode = actualRole === 'Lender' ? 'show' : 'enter';
+
+      setResolvedMode(effectiveMode);
       setOrder(currentOrder);
 
-      if (mode === 'show') {
+      if (effectiveMode === 'show') {
         // Reuse the issued code and original backend expiry on focus/refresh.
         // A new code is generated only if no valid code is cached.
         const result = await getOrGenerateHandoverCode(orderId);
         setCode(result.code);
         setExpiresAt(result.expiresAt);
+      } else {
+        setEnteredCode('');
+        await refreshLockout();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load the handover code.');
     } finally {
       setLoading(false);
     }
-  }, [orderId, orderRole, mode, refreshLockout]);
+  }, [orderId, routeMode, refreshLockout]);
 
   useFocusEffect(
     useCallback(() => {
@@ -204,19 +217,28 @@ export default function HandoverCodeScreen({ navigation, route }: any) {
               </Text>
 
               {mode === 'show' ? (
-                <>
-                  <View style={styles.codeRow}>
-                    {code.split('').map((digit, index) => (
-                      <View key={index} style={styles.codeCell}>
-                        <Text style={styles.codeDigit}>{digit}</Text>
+                error && !code ? (
+                  <Text style={[styles.errorText, { textAlign: 'center' }]}>{error}</Text>
+                ) : (
+                  <>
+                    <View style={styles.codeRow}>
+                      {code.split('').map((digit, index) => (
+                        <View key={index} style={styles.codeCell}>
+                          <Text style={styles.codeDigit}>{digit}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    {code ? (
+                      <View style={styles.expiry}>
+                        <Text style={text.caption}>Expires in</Text>
+                        <Text style={styles.timer}>{remaining > 0 ? formatTime(remaining) : '00:00:00'}</Text>
                       </View>
-                    ))}
-                  </View>
-                  <View style={styles.expiry}>
-                    <Text style={text.caption}>Expires in</Text>
-                    <Text style={styles.timer}>{remaining > 0 ? formatTime(remaining) : '00:00:00'}</Text>
-                  </View>
-                </>
+                    ) : null}
+                    {error ? (
+                      <Text style={[styles.errorText, { textAlign: 'center' }]}>{error}</Text>
+                    ) : null}
+                  </>
+                )
               ) : locked ? (
                 <View style={styles.lockedCard}>
                   <Text style={styles.lockedTitle}>Code Entry Locked</Text>
@@ -257,7 +279,11 @@ export default function HandoverCodeScreen({ navigation, route }: any) {
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={text.caption}>{mode === 'show' ? 'Borrower' : 'Lender'}</Text>
-                  <Text style={styles.detailValue}>{order.counterpart || (mode === 'show' ? 'Borrower' : 'Lender')}</Text>
+                  <Text style={styles.detailValue}>
+                    {(mode === 'show' ? order.borrowerName : order.lenderName) ||
+                      order.counterpart ||
+                      (mode === 'show' ? 'Borrower' : 'Lender')}
+                  </Text>
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={text.caption}>Pickup</Text>

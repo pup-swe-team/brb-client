@@ -1,5 +1,5 @@
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -15,7 +15,7 @@ import {
 import { colors, spacing, text } from '../../../theme';
 import type { Order, OrderRole } from '../../../shared/types';
 import { getCurrentUser, AuthUser } from '../../auth/services/authService';
-import { getOrder } from '../services/ordersService';
+import { getOrder, resolveOrderRole } from '../services/ordersService';
 import { CancelOrderAction } from '../components/CancelOrderAction';
 import { HandoverCodeAction } from '../components/HandoverCodeAction';
 import { RespondToRequestActions } from '../components/RespondToRequestActions';
@@ -34,27 +34,24 @@ export default function OrderDetailScreen({ navigation, route }: any) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    getCurrentUser()
-      .then(setCurrentUser)
-      .catch(() => {});
-  }, []);
-
   const load = useCallback(() => {
     let active = true;
     setLoading(true);
     setError('');
 
-    // Pass the viewer's role so the counterpart is mapped correctly: a Lender
-    // sees the Borrower, a Borrower sees the Lender.
-    getOrder(orderId, roleParam)
-      .then((loaded) => {
+    // Fetch order and current user together so role derivation never races or flickers.
+    Promise.all([
+      getOrder(orderId, roleParam),
+      getCurrentUser().catch(() => null),
+    ])
+      .then(([loaded, account]) => {
         if (active) {
           setOrder(loaded);
+          if (account) setCurrentUser(account);
           setError('');
         }
       })
-      .catch((e) => {
+      .catch(() => {
         if (active) {
           setOrder(null);
           setError('We couldn’t load this order. Please try again.');
@@ -71,21 +68,11 @@ export default function OrderDetailScreen({ navigation, route }: any) {
 
   useFocusEffect(load);
 
-  // Derive the viewer role reliably: if the signed-in user's name matches the lender, they are Lender.
-  const role: OrderRole = useMemo(() => {
-    if (currentUser && order) {
-      const userNorm = currentUser.full_name.trim().toLowerCase();
-      const lenderNorm = (order.lenderName || '').trim().toLowerCase();
-      const borrowerNorm = (order.borrowerName || '').trim().toLowerCase();
-      if (lenderNorm && userNorm && (lenderNorm.includes(userNorm.split(' ')[0]) || userNorm.includes(lenderNorm.split(' ')[0]))) {
-        return 'Lender';
-      }
-      if (borrowerNorm && userNorm && (borrowerNorm.includes(userNorm.split(' ')[0]) || userNorm.includes(borrowerNorm.split(' ')[0]))) {
-        return 'Borrower';
-      }
-    }
-    return roleParam ?? order?.role ?? 'Borrower';
-  }, [currentUser, order, roleParam]);
+  // Derive the viewer role deterministically by exact user ID (falling back to route/order).
+  const role: OrderRole = useMemo(
+    () => resolveOrderRole(order, currentUser, roleParam),
+    [order, currentUser, roleParam],
+  );
 
   const counterpartName = useMemo(() => {
     if (!order) return '';

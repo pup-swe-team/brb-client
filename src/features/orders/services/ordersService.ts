@@ -113,6 +113,15 @@ export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
   const endDate = raw.endDate || raw.end_date || '';
 
   // The backend exposes borrower/lender explicitly (FE-BUG-3002). Never infer one from the other.
+  const rawBorrowerId = raw.borrowerId ?? raw.borrower_id ?? raw.borrower?.id;
+  const rawLenderId =
+    raw.lenderId ??
+    raw.lender_id ??
+    raw.lender?.id ??
+    raw.listing?.lender_id ??
+    raw.listing?.lender?.id;
+  const borrowerId = rawBorrowerId != null ? String(rawBorrowerId) : undefined;
+  const lenderId = rawLenderId != null ? String(rawLenderId) : undefined;
   const borrowerName =
     raw.borrower_name || raw.borrower?.full_name || raw.borrower_full_name || '';
   const lenderName =
@@ -168,6 +177,8 @@ export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
     orderNumber,
     pickupLocation: typeof pickupLocation === 'string' ? pickupLocation : '',
     pricePerDay,
+    borrowerId,
+    lenderId,
     borrowerName: borrowerName || undefined,
     lenderName: lenderName || undefined,
     lockout: parseLockout(raw),
@@ -176,6 +187,37 @@ export function normalizeOrder(raw: any, defaultRole?: OrderRole): Order {
     review: raw.review,
     reviews: Array.isArray(raw.reviews) ? raw.reviews : undefined,
   };
+}
+
+/**
+ * Determine the viewer's role on an order deterministically.
+ * Always prefer exact user IDs (`lenderId`/`borrowerId`) over names so
+ * accounts with identical or overlapping first names never swap roles.
+ */
+export function resolveOrderRole(
+  order: Pick<Order, 'role' | 'borrowerId' | 'lenderId' | 'borrowerName' | 'lenderName'> | null | undefined,
+  currentUser: { id?: number | string | null; full_name?: string | null } | null | undefined,
+  fallbackRole?: OrderRole,
+): OrderRole {
+  if (order && currentUser) {
+    if (currentUser.id != null) {
+      const uid = String(currentUser.id);
+      if (order.lenderId && uid === order.lenderId) return 'Lender';
+      if (order.borrowerId && uid === order.borrowerId) return 'Borrower';
+    }
+    if (!order.lenderId && !order.borrowerId && currentUser.full_name) {
+      const userNorm = currentUser.full_name.trim().toLowerCase();
+      const lenderNorm = (order.lenderName || '').trim().toLowerCase();
+      const borrowerNorm = (order.borrowerName || '').trim().toLowerCase();
+      if (lenderNorm && userNorm === lenderNorm && userNorm !== borrowerNorm) {
+        return 'Lender';
+      }
+      if (borrowerNorm && userNorm === borrowerNorm && userNorm !== lenderNorm) {
+        return 'Borrower';
+      }
+    }
+  }
+  return fallbackRole ?? order?.role ?? 'Borrower';
 }
 
 // Dashboard payloads group orders in several arrays (active_borrows, pending_requests, ...).
@@ -514,6 +556,9 @@ async function fetchActiveCode(kind: CodeKind, orderId: string): Promise<OrderCo
   }
   try {
     const { data } = await http.get<any>(`/orders/${orderId}/${kind}-code/`);
+    if (!data?.has_active_code && !(data?.code_value ?? data?.code)) {
+      return null;
+    }
     const parsed = parseOrderCode(data);
     return isUsable(parsed) ? parsed : null;
   } catch (error: any) {

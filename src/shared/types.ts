@@ -21,6 +21,8 @@ export interface Order {
   pricePerDay?: number;    // PHP, 0 = FREE (payment happens outside the app)
   listingId?: string;
   // Explicit identities from the backend so Borrower/Lender are never swapped (FE-BUG-3002).
+  borrowerId?: string;
+  lenderId?: string;
   borrowerName?: string;
   lenderName?: string;
   lockout?: OrderLockout;

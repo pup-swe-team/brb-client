@@ -19,13 +19,15 @@ import {
   TopBar,
 } from '../../../shared/components';
 import { colors, spacing, text } from '../../../theme';
-import type { Order, OrderRole } from '../../../shared/types';
+import type { Order } from '../../../shared/types';
+import { getCurrentUser } from '../../auth/services/authService';
 import {
   confirmReturn,
   generateReturnCode,
   getOrder,
   getOrGenerateReturnCode,
   OrderCodeError,
+  resolveOrderRole,
 } from '../services/ordersService';
 import { formatLockoutTime, useCodeLockout } from '../hooks/useCodeLockout';
 
@@ -33,9 +35,12 @@ type Mode = 'show' | 'enter';
 
 export default function ReturnCodeScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
-  const { orderId, mode } = route.params as { orderId: string; mode: Mode };
-  // Borrower displays the code; lender enters it.
-  const orderRole: OrderRole = mode === 'show' ? 'Borrower' : 'Lender';
+  const { orderId, mode: routeMode = 'enter' } = (route?.params || {}) as {
+    orderId: string;
+    mode?: Mode;
+  };
+  const [resolvedMode, setResolvedMode] = useState<Mode | null>(null);
+  const mode = resolvedMode ?? routeMode;
 
   const [order, setOrder] = useState<Order | null>(null);
   const [code, setCode] = useState('');
@@ -68,10 +73,19 @@ export default function ReturnCodeScreen({ navigation, route }: any) {
   const loadScreen = useCallback(async () => {
     setLoading(true);
     setError('');
+    setCode('');
+    setExpiresAt('');
+    const fallbackRole = routeMode === 'show' ? 'Borrower' : 'Lender';
     try {
-      const currentOrder = await getOrder(orderId, orderRole);
+      const [currentOrder, currentUser] = await Promise.all([
+        getOrder(orderId, fallbackRole),
+        getCurrentUser().catch(() => null),
+      ]);
+      const actualRole = resolveOrderRole(currentOrder, currentUser, fallbackRole);
+      const effectiveMode: Mode = actualRole === 'Borrower' ? 'show' : 'enter';
+      setResolvedMode(effectiveMode);
       setOrder(currentOrder);
-      if (mode === 'show') {
+      if (effectiveMode === 'show') {
         // Reuse the active code and its ORIGINAL expiry; only generate if none/expired.
         const result = await getOrGenerateReturnCode(orderId);
         setCode(result.code);
@@ -85,7 +99,7 @@ export default function ReturnCodeScreen({ navigation, route }: any) {
     } finally {
       setLoading(false);
     }
-  }, [orderId, orderRole, mode, refreshLockout]);
+  }, [orderId, routeMode, refreshLockout]);
 
   useFocusEffect(
     useCallback(() => {
@@ -205,19 +219,28 @@ export default function ReturnCodeScreen({ navigation, route }: any) {
               </Text>
 
               {mode === 'show' ? (
-                <>
-                  <View style={styles.codeRow}>
-                    {code.split('').map((digit, index) => (
-                      <View key={index} style={styles.codeCell}>
-                        <Text style={styles.codeDigit}>{digit}</Text>
+                error && !code ? (
+                  <Text style={[styles.errorText, { textAlign: 'center' }]}>{error}</Text>
+                ) : (
+                  <>
+                    <View style={styles.codeRow}>
+                      {code.split('').map((digit, index) => (
+                        <View key={index} style={styles.codeCell}>
+                          <Text style={styles.codeDigit}>{digit}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    {code ? (
+                      <View style={styles.expiry}>
+                        <Text style={styles.expiryLabel}>Expires in</Text>
+                        <Text style={styles.timer}>{remaining > 0 ? formatTime(remaining) : '00:00:00'}</Text>
                       </View>
-                    ))}
-                  </View>
-                  <View style={styles.expiry}>
-                    <Text style={styles.expiryLabel}>Expires in</Text>
-                    <Text style={styles.timer}>{remaining > 0 ? formatTime(remaining) : '00:00:00'}</Text>
-                  </View>
-                </>
+                    ) : null}
+                    {error ? (
+                      <Text style={[styles.errorText, { textAlign: 'center' }]}>{error}</Text>
+                    ) : null}
+                  </>
+                )
               ) : locked ? (
                 <View style={styles.lockedBox} accessibilityRole="alert">
                   <Text style={styles.lockedTitle}>Code Entry Locked</Text>
@@ -245,7 +268,9 @@ export default function ReturnCodeScreen({ navigation, route }: any) {
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>{mode === 'show' ? 'Lender' : 'Borrower'}</Text>
                   <Text style={styles.detailValue}>
-                    {order.counterpart || (mode === 'show' ? 'Lender' : 'Borrower')}
+                    {(mode === 'show' ? order.lenderName : order.borrowerName) ||
+                      order.counterpart ||
+                      (mode === 'show' ? 'Lender' : 'Borrower')}
                   </Text>
                 </View>
                 <View style={styles.detailRow}>
