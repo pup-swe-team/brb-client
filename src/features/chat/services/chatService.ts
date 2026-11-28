@@ -54,6 +54,10 @@ function mapConversation(
       item.last_message?.sent_at ||
       item.updated_at ||
       undefined,
+    lastMessageIsMine:
+      typeof item.last_message?.is_mine === 'boolean'
+        ? item.last_message.is_mine
+        : undefined,
     unreadCount: Number(item.unread_count || 0),
     listingId: item.listing_id
       ? String(item.listing_id)
@@ -110,14 +114,24 @@ export async function getConversation(conversationId: string): Promise<ChatConve
 // Retrieve messages for one conversation.
 export async function getMessages(
   conversationId: string,
+  options?: { markRead?: boolean },
 ): Promise<ChatMessage[]> {
   if (USE_MOCK) {
     await new Promise((resolve) => setTimeout(resolve, 150));
+    if (options?.markRead) {
+      const conversation = mockConversations.find(
+        (item) => item.id === conversationId,
+      );
+      if (conversation) {
+        conversation.unreadCount = 0;
+      }
+    }
     return [...(mockMessages[conversationId] || [])];
   }
 
   const { data } = await http.get(
     `/chats/${conversationId}/messages/`,
+    options?.markRead ? { params: { mark_read: 'true' } } : undefined,
   );
 
   const list = Array.isArray(data) ? data : data?.results || [];
@@ -174,6 +188,8 @@ export async function sendMessage(
     if (conversation) {
       conversation.lastMessage = trimmedText;
       conversation.lastMessageAt = newMessage.createdAt;
+      conversation.lastMessageIsMine = true;
+      conversation.unreadCount = 0;
     }
 
     return newMessage;
@@ -341,4 +357,37 @@ export async function markConversationRead(
   } catch {
     // Marking as read is non-blocking.
   }
+}
+
+// Clear/remove a conversation from the current user's inbox (CP-703).
+export async function deleteConversation(
+  conversationId: string,
+): Promise<{
+  deleted: boolean;
+  hidden: boolean;
+  retained: boolean;
+  detail: string;
+}> {
+  if (USE_MOCK) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const idx = mockConversations.findIndex((item) => item.id === conversationId);
+    if (idx !== -1) {
+      mockConversations.splice(idx, 1);
+    }
+    delete mockMessages[conversationId];
+    return {
+      deleted: true,
+      hidden: true,
+      retained: false,
+      detail: 'Conversation removed from your inbox.',
+    };
+  }
+
+  const { data } = await http.delete(`/chats/${conversationId}/`);
+  return {
+    deleted: Boolean(data?.deleted),
+    hidden: Boolean(data?.hidden ?? true),
+    retained: Boolean(data?.retained),
+    detail: String(data?.detail || 'Conversation removed from your inbox.'),
+  };
 }

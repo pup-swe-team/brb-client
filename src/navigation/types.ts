@@ -29,7 +29,16 @@ export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
   VerifyIdentity: undefined;
-  LenderProfile: { lenderId: string } | undefined;
+  LenderProfile:
+    | {
+        lenderId: string;
+        fallbackProfile?: {
+          fullName?: string;
+          affiliation?: string;
+          photoUrl?: string;
+        };
+      }
+    | undefined;
   MyListings: undefined;
   EditListing: { listing: import('../features/listings/services/listingsService').ManagedListing };
   AccountSettings: undefined;
@@ -56,6 +65,7 @@ export type RootStackParamList = {
     recipientId?: string;
     recipientName?: string;
     recipientAffiliation?: string;
+    recipientAvatar?: string;
     listingId?: string;
     orderId?: string;
     listingTitle?: string;

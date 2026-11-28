@@ -2,12 +2,13 @@
  // OWNER: Izzy | CP-701, CP-702
 // One-to-one conversation thread with messaging and user blocking.
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -16,14 +17,17 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors, radius, spacing, text } from '../../../theme';
-import { ScreenContainer, TopBar } from '../../../shared/components';
+import { Button, ScreenContainer, TopBar } from '../../../shared/components';
 import { AffiliationBadge } from '../../../shared/components/VerifiedLabel';
 import { extractApiError, USE_MOCK } from '../../../services/http';
 import { getCurrentUser } from '../../auth/services/authService';
+import { ReportSheet } from '../../reports/components/ReportSheet';
 import { ChatMessage } from '../services/chatTypes';
 import {
   blockUser,
+  deleteConversation,
   getConversation,
   getMessages,
   isUserBlocked,
@@ -57,6 +61,7 @@ export default function ChatThreadScreen({ navigation, route }: any) {
     recipientName = 'Conversation',
     recipientId = '',
     recipientAffiliation: initialRecipientAffiliation,
+    recipientAvatar: initialRecipientAvatar,
     listingId,
     orderId,
     listingTitle,
@@ -66,8 +71,12 @@ export default function ChatThreadScreen({ navigation, route }: any) {
     initialConversationId,
   );
   const [resolvedRecipientId, setResolvedRecipientId] = useState<string>(recipientId);
+  const [resolvedRecipientName, setResolvedRecipientName] = useState<string>(recipientName);
   const [resolvedRecipientAffiliation, setResolvedRecipientAffiliation] = useState<string | undefined>(
     initialRecipientAffiliation,
+  );
+  const [resolvedRecipientAvatar, setResolvedRecipientAvatar] = useState<string | undefined>(
+    initialRecipientAvatar,
   );
   const [canBlock, setCanBlock] = useState(true);
   const [blockDisabledReason, setBlockDisabledReason] = useState<string | null>(null);
@@ -77,9 +86,13 @@ export default function ChatThreadScreen({ navigation, route }: any) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [blocking, setBlocking] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [blockModalVisible, setBlockModalVisible] = useState(false);
+  const [clearModalVisible, setClearModalVisible] = useState(false);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const hasFocusedOnceRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -118,8 +131,14 @@ export default function ChatThreadScreen({ navigation, route }: any) {
             if (targetRecipientId) {
               setResolvedRecipientId(targetRecipientId);
             }
+            if (started.participantName) {
+              setResolvedRecipientName(started.participantName);
+            }
             if (started.participantAffiliation) {
               setResolvedRecipientAffiliation(started.participantAffiliation);
+            }
+            if (started.participantAvatar) {
+              setResolvedRecipientAvatar(started.participantAvatar);
             }
             if (typeof started.canBlock === 'boolean') {
               setCanBlock(started.canBlock);
@@ -129,7 +148,7 @@ export default function ChatThreadScreen({ navigation, route }: any) {
         }
 
         const [messageData, blocked, conversationMeta] = await Promise.all([
-          getMessages(convId),
+          getMessages(convId, { markRead: true }),
           targetRecipientId
             ? isUserBlocked(targetRecipientId)
             : Promise.resolve(false),
@@ -141,16 +160,20 @@ export default function ChatThreadScreen({ navigation, route }: any) {
         if (active) {
           setMessages(messageData);
           setIsBlocked(blocked || startedBlocked || Boolean(conversationMeta?.isBlocked));
+          if (conversationMeta?.participantName) {
+            setResolvedRecipientName(conversationMeta.participantName);
+          }
           if (conversationMeta?.participantAffiliation) {
             setResolvedRecipientAffiliation(conversationMeta.participantAffiliation);
+          }
+          if (conversationMeta?.participantAvatar) {
+            setResolvedRecipientAvatar(conversationMeta.participantAvatar);
           }
           if (typeof conversationMeta?.canBlock === 'boolean') {
             setCanBlock(conversationMeta.canBlock);
             setBlockDisabledReason(conversationMeta.blockDisabledReason || null);
           }
         }
-
-        await markConversationRead(convId);
       } catch (error) {
         console.warn('[ChatThread] Failed to load conversation:', error);
       } finally {
@@ -255,17 +278,70 @@ export default function ChatThreadScreen({ navigation, route }: any) {
     }
 
     if (action === 'profile') {
-      Alert.alert('View Profile', 'Profile viewing is not included in CP-701 or CP-702.');
+      if (!resolvedRecipientId) {
+        Alert.alert('Profile unavailable', 'User details are still loading.');
+        return;
+      }
+      navigation.navigate('LenderProfile', {
+        lenderId: resolvedRecipientId,
+        fallbackProfile: {
+          fullName: resolvedRecipientName,
+          affiliation: resolvedRecipientAffiliation,
+          photoUrl: resolvedRecipientAvatar,
+        },
+      });
       return;
     }
 
     if (action === 'clear') {
-      Alert.alert('Clear Chat History', 'Chat history clearing is not included in CP-701 or CP-702.');
+      setClearModalVisible(true);
       return;
     }
 
     if (action === 'report') {
-      Alert.alert('Report User', 'User reporting is not included in CP-701 or CP-702.');
+      if (!resolvedRecipientId) {
+        Alert.alert('Report unavailable', 'User details are still loading.');
+        return;
+      }
+      setReportModalVisible(true);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!hasFocusedOnceRef.current) {
+        hasFocusedOnceRef.current = true;
+        return;
+      }
+      if (activeConversationId) {
+        markConversationRead(activeConversationId);
+      }
+    }, [activeConversationId]),
+  );
+
+  const handleConfirmClear = async () => {
+    if (clearing) return;
+
+    if (!activeConversationId) {
+      setMessages([]);
+      setClearModalVisible(false);
+      return;
+    }
+
+    setClearing(true);
+    try {
+      await deleteConversation(activeConversationId);
+      setClearModalVisible(false);
+      setMessages([]);
+      navigation.goBack();
+    } catch (error) {
+      console.warn('[ChatThread] Failed to clear chat history:', error);
+      Alert.alert(
+        'Unable to clear chat',
+        extractApiError(error) || 'Please try again.',
+      );
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -317,7 +393,7 @@ export default function ChatThreadScreen({ navigation, route }: any) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <TopBar
-        title={recipientName}
+        title={resolvedRecipientName}
         titleAccessory={
           resolvedRecipientAffiliation ? (
             <AffiliationBadge affiliation={resolvedRecipientAffiliation} compact />
@@ -350,7 +426,7 @@ export default function ChatThreadScreen({ navigation, route }: any) {
           <View style={styles.menu}>
             <Text style={styles.menuHeading}>USER ACTIONS</Text>
             <View style={styles.menuSubtitleRow}>
-              <Text style={styles.menuSubtitle}>{recipientName}</Text>
+              <Text style={styles.menuSubtitle}>{resolvedRecipientName}</Text>
               {resolvedRecipientAffiliation ? (
                 <AffiliationBadge affiliation={resolvedRecipientAffiliation} compact />
               ) : null}
@@ -550,10 +626,65 @@ export default function ChatThreadScreen({ navigation, route }: any) {
 
       <BlockUserModal
         visible={blockModalVisible}
-        userName={recipientName}
+        userName={resolvedRecipientName}
         loading={blocking}
         onConfirm={handleConfirmBlock}
         onCancel={() => setBlockModalVisible(false)}
+      />
+
+      <Modal
+        visible={clearModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !clearing && setClearModalVisible(false)}
+      >
+        <View style={styles.clearOverlay}>
+          <View style={styles.clearModalCard}>
+            <View style={styles.clearIconCircle}>
+              <Ionicons
+                name="trash-outline"
+                size={spacing.xl}
+                color={colors.warning}
+              />
+            </View>
+
+            <Text style={styles.clearModalTitle}>Clear chat history?</Text>
+
+            <Text style={styles.clearModalMessage}>
+              This conversation will be removed from your inbox. Threads linked to an
+              open report, disputed order, or unreturned case remain retained for
+              administrative review.
+            </Text>
+
+            <View style={styles.clearModalActions}>
+              <View style={styles.clearModalButtonWrap}>
+                <Button
+                  title="Cancel"
+                  variant="secondary"
+                  onPress={() => setClearModalVisible(false)}
+                  disabled={clearing}
+                  compact
+                />
+              </View>
+              <View style={styles.clearModalButtonWrap}>
+                <Button
+                  title="Clear"
+                  variant="destructive"
+                  onPress={handleConfirmClear}
+                  loading={clearing}
+                  compact
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <ReportSheet
+        visible={reportModalVisible}
+        targetType="user"
+        targetId={resolvedRecipientId}
+        onClose={() => setReportModalVisible(false)}
       />
     </KeyboardAvoidingView>
   );
@@ -795,5 +926,47 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.5,
+  },
+  clearOverlay: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  clearModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: colors.white,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  clearIconCircle: {
+    width: spacing.xxxl + spacing.lg,
+    height: spacing.xxxl + spacing.lg,
+    borderRadius: radius.pill,
+    backgroundColor: colors.goldSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearModalTitle: {
+    ...text.h2,
+    textAlign: 'center',
+  },
+  clearModalMessage: {
+    ...text.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  clearModalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    width: '100%',
+    marginTop: spacing.xs,
+  },
+  clearModalButtonWrap: {
+    flex: 1,
   },
 });

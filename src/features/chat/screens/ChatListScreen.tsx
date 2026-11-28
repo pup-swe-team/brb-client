@@ -2,7 +2,7 @@
 // OWNER: Izzy | CP-701
 // Chat tab screen: Displays searchable conversations, latest messages, and unread indicators.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { colors, radius, spacing, text } from '../../../theme';
 import {
   EmptyState,
@@ -54,20 +54,38 @@ export default function ChatListScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const hasLoadedRef = useRef(false);
 
-  useEffect(() => {
-    getConversations()
-      .then((data) => {
-        setConversations(data);
-        setError(false);
-      })
-      .catch(() => {
-        setError(true);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      if (!hasLoadedRef.current) {
+        setLoading(true);
+      }
+
+      getConversations()
+        .then((data) => {
+          if (!active) return;
+          hasLoadedRef.current = true;
+          setConversations(data);
+          setError(false);
+        })
+        .catch(() => {
+          if (!active) return;
+          setError(true);
+        })
+        .finally(() => {
+          if (active) {
+            setLoading(false);
+          }
+        });
+
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   const filteredConversations = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -96,6 +114,7 @@ export default function ChatListScreen() {
       recipientId: conversation.participantId,
       recipientName: conversation.participantName,
       recipientAffiliation: conversation.participantAffiliation,
+      recipientAvatar: conversation.participantAvatar,
       listingId: conversation.listingId,
       listingTitle: conversation.listingTitle,
       orderId: conversation.orderId,
@@ -154,7 +173,11 @@ export default function ChatListScreen() {
         ) : null}
 
         <Text style={styles.lastMsg} numberOfLines={1}>
-          {item.lastMessage || 'No messages yet'}
+          {item.lastMessage
+            ? item.lastMessageIsMine
+              ? `You: ${item.lastMessage}`
+              : item.lastMessage
+            : 'No messages yet'}
         </Text>
       </View>
 

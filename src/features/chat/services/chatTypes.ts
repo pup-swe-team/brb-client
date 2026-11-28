@@ -20,6 +20,7 @@ export interface ChatConversation {
   participantAvatar?: string;
   lastMessage?: string;
   lastMessageAt?: string;
+  lastMessageIsMine?: boolean;
   unreadCount: number;
   listingId?: string;
   listingTitle?: string;

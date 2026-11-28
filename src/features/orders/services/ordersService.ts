@@ -607,8 +607,12 @@ export async function getCodeLockout(kind: CodeKind, orderId: string): Promise<O
 function toCodeError(error: any): Error {
   const data = error?.response?.data ?? {};
   const status = error?.response?.status;
-  const serverCode = typeof data.code === 'string' ? data.code.toLowerCase() : '';
-  const detail = typeof data.detail === 'string' ? data.detail.toLowerCase() : '';
+  const rawCode = data.error_code ?? data.code;
+  const serverCode = typeof rawCode === 'string' ? rawCode.toLowerCase() : '';
+  const fallbackFieldDetail = Array.isArray(rawCode) && rawCode[0] ? String(rawCode[0]) : '';
+  const detail = (
+    typeof data.detail === 'string' && data.detail ? data.detail : fallbackFieldDetail
+  ).toLowerCase();
   const failedAttempts = data.failed_attempts != null ? Number(data.failed_attempts) : undefined;
 
   if (status === 429 || serverCode === 'lockout_active' || detail.includes('locked')) {

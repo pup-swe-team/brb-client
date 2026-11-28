@@ -25,7 +25,15 @@ function initials(name: string) {
   return (first + last).toUpperCase();
 }
 
-function Shell({ onBack, children }: { onBack: () => void; children: React.ReactNode }) {
+function Shell({
+  onBack,
+  title = 'Lender Profile',
+  children,
+}: {
+  onBack: () => void;
+  title?: string;
+  children: React.ReactNode;
+}) {
   const insets = useSafeAreaInsets();
   return (
     <ScreenContainer edges={['bottom']} padded={false}>
@@ -34,7 +42,7 @@ function Shell({ onBack, children }: { onBack: () => void; children: React.React
           <Pressable onPress={onBack} hitSlop={12} style={s.backBtn} accessibilityRole="button" accessibilityLabel="Go back">
             <Ionicons name="arrow-back" size={20} color={colors.white} />
           </Pressable>
-          <Text style={s.headerTitle}>Lender Profile</Text>
+          <Text style={s.headerTitle}>{title}</Text>
         </View>
         {children}
       </View>
@@ -64,9 +72,13 @@ function EmptyBlock({ text }: { text: string }) {
 // Route param: { lenderId: string }. Falls back to 'u1' so the screen also opens without params while testing.
 export default function LenderProfileScreen({ navigation, route }: any) {
   const lenderId: string = route?.params?.lenderId ?? 'u1';
+  const fallbackProfile = route?.params?.fallbackProfile as
+    | { fullName?: string; affiliation?: string; photoUrl?: string }
+    | undefined;
   const goBack = () => navigation?.goBack?.();
 
   const [lender, setLender] = useState<PublicLenderProfile | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,10 +86,20 @@ export default function LenderProfileScreen({ navigation, route }: any) {
     let active = true;
     getLenderProfile(lenderId)
       .then((data) => {
-        if (active) setLender(data);
+        if (!active) return;
+        setLender(data);
+        setNotFound(false);
+        setError(null);
       })
-      .catch(() => {
-        if (active) setError('Could not load this lender profile.');
+      .catch((err) => {
+        if (!active) return;
+        if (err?.response?.status === 404 || err?.message === 'Lender not found') {
+          setNotFound(true);
+          setError(null);
+          return;
+        }
+        setNotFound(false);
+        setError('Could not load this lender profile.');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -90,9 +112,19 @@ export default function LenderProfileScreen({ navigation, route }: any) {
   const handleRetry = () => {
     setLoading(true);
     setError(null);
+    setNotFound(false);
     getLenderProfile(lenderId)
-      .then((data) => setLender(data))
-      .catch(() => setError('Could not load this lender profile.'))
+      .then((data) => {
+        setLender(data);
+        setNotFound(false);
+      })
+      .catch((err) => {
+        if (err?.response?.status === 404 || err?.message === 'Lender not found') {
+          setNotFound(true);
+          return;
+        }
+        setError('Could not load this lender profile.');
+      })
       .finally(() => setLoading(false));
   };
 
@@ -102,6 +134,40 @@ export default function LenderProfileScreen({ navigation, route }: any) {
         <View style={s.center}>
           <ActivityIndicator color={colors.primary} />
         </View>
+      </Shell>
+    );
+  }
+
+  if (notFound && fallbackProfile) {
+    const memberName = fallbackProfile.fullName || 'Community Member';
+    return (
+      <Shell onBack={goBack} title="Member Profile">
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
+          <View style={s.profileCard}>
+            <View style={s.avatar}>
+              {fallbackProfile.photoUrl ? (
+                <Image source={{ uri: fallbackProfile.photoUrl }} style={s.avatarImage} />
+              ) : (
+                <Text style={s.avatarText}>{initials(memberName)}</Text>
+              )}
+            </View>
+            <View style={s.profileInfo}>
+              <Text style={s.name}>{memberName}</Text>
+              <Text style={s.affiliation}>
+                {fallbackProfile.affiliation || 'PUP Community'}
+              </Text>
+              <Text style={s.since}>Verified community borrower</Text>
+            </View>
+          </View>
+
+          <View style={s.section}>
+            <ReportButton targetType="user" targetId={lenderId} />
+          </View>
+
+          <View style={s.section}>
+            <EmptyBlock text="This member is currently a borrower and does not have an active lender profile or listings." />
+          </View>
+        </ScrollView>
       </Shell>
     );
   }
